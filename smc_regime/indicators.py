@@ -64,6 +64,58 @@ def ema_extension_atr_units(df: pd.DataFrame, ema_window: int = 20, atr_window: 
     return dist / atr(df, atr_window).replace(0, np.nan)
 
 
+def rsi(close: pd.Series, window: int = 14) -> pd.Series:
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.ewm(alpha=1 / window, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / window, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
+
+
+def macd(close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    macd_line = ema(close, fast) - ema(close, slow)
+    signal_line = ema(macd_line, signal)
+    return pd.DataFrame({"macd": macd_line, "signal": signal_line, "histogram": macd_line - signal_line})
+
+
+def bollinger_bands(close: pd.Series, window: int = 20, num_std: float = 2.0) -> pd.DataFrame:
+    mid = close.rolling(window).mean()
+    std = close.rolling(window).std()
+    return pd.DataFrame({"mid": mid, "upper": mid + num_std * std, "lower": mid - num_std * std})
+
+
+def donchian_channel(df: pd.DataFrame, window: int = 20) -> pd.DataFrame:
+    return pd.DataFrame({"upper": df["High"].rolling(window).max(), "lower": df["Low"].rolling(window).min()})
+
+
+def supertrend(df: pd.DataFrame, atr_window: int = 10, multiplier: float = 3.0) -> pd.DataFrame:
+    hl2 = (df["High"] + df["Low"]) / 2
+    atr_val = atr(df, atr_window)
+    close = df["Close"]
+    n = len(df)
+
+    final_upper = (hl2 + multiplier * atr_val).to_numpy().copy()
+    final_lower = (hl2 - multiplier * atr_val).to_numpy().copy()
+    close_arr = close.to_numpy()
+    direction = np.ones(n)
+
+    for i in range(1, n):
+        if close_arr[i - 1] <= final_upper[i - 1]:
+            final_upper[i] = min(final_upper[i], final_upper[i - 1])
+        if close_arr[i - 1] >= final_lower[i - 1]:
+            final_lower[i] = max(final_lower[i], final_lower[i - 1])
+
+        if direction[i - 1] == 1:
+            direction[i] = -1 if close_arr[i] < final_lower[i] else 1
+        else:
+            direction[i] = 1 if close_arr[i] > final_upper[i] else -1
+
+    line = np.where(direction == 1, final_lower, final_upper)
+    return pd.DataFrame({"supertrend": line, "direction": direction}, index=df.index)
+
+
 def rolling_slope(series: pd.Series, window: int) -> pd.Series:
     """OLS slope of series vs. time index, computed per rolling window."""
     x = np.arange(window, dtype=float)

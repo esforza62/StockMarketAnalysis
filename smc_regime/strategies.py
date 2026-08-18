@@ -61,6 +61,18 @@ def supertrend_following(df: pd.DataFrame, atr_window: int = 10, multiplier: flo
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def vwap_trend_structure(df: pd.DataFrame, window: int = 20, slope_window: int = 5) -> pd.DataFrame:
+    """Price crossing above a rising rolling VWAP -- trend *structure*, not a
+    bare crossover, since the slope filter requires VWAP itself to be
+    trending up (down) for a long entry (exit)."""
+    close = df["Close"]
+    v = ind.vwap(df, window)
+    v_rising = v.diff(slope_window) > 0
+    entry = (close > v) & (close.shift(1) <= v.shift(1)) & v_rising
+    exit_ = (close < v) & (close.shift(1) >= v.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -68,4 +80,5 @@ STRATEGIES = {
     "ema_cross": ema_trend_cross,
     "donchian": donchian_breakout,
     "supertrend": supertrend_following,
+    "vwap_trend": vwap_trend_structure,
 }

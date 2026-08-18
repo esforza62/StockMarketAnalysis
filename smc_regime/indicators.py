@@ -116,6 +116,19 @@ def supertrend(df: pd.DataFrame, atr_window: int = 10, multiplier: float = 3.0) 
     return pd.DataFrame({"supertrend": line, "direction": direction}, index=df.index)
 
 
+def vwap(df: pd.DataFrame, window: int = 20) -> pd.Series:
+    """Rolling volume-weighted average price over a fixed window.
+
+    Not a session-anchored VWAP (no intraday session boundaries here, and no
+    fixed anchor-event rule) -- a rolling approximation, which is the
+    standard substitute when working from daily/hourly bars rather than
+    intraday session data.
+    """
+    typical_price = (df["High"] + df["Low"] + df["Close"]) / 3
+    pv = typical_price * df["Volume"]
+    return pv.rolling(window).sum() / df["Volume"].rolling(window).sum()
+
+
 def rolling_slope(series: pd.Series, window: int) -> pd.Series:
     """OLS slope of series vs. time index, computed per rolling window."""
     x = np.arange(window, dtype=float)

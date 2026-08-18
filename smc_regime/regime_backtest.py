@@ -53,18 +53,32 @@ def collect_trades(
     return pd.DataFrame.from_records(records)
 
 
-def _compounded_return_pct(group: pd.DataFrame) -> float:
-    """Sequential compounding of every trade's return, ordered by entry date.
+def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:
+    """Sequential compounding of one ticker's own trades, ordered by entry date.
 
-    Simplified vs. a real portfolio: assumes one trade at a time (capital
-    fully reinvested each trade, no concurrent positions), so it overstates
-    what a real multi-ticker account would do -- but it's a much closer
-    approximation of "what would this have made me" than a raw sum of
-    percentages, which ignores compounding entirely.
+    Valid here because this backtest only ever holds one position per ticker
+    at a time -- a single ticker's trades genuinely do happen one after
+    another for that ticker's own capital.
     """
-    returns = group.sort_values("entry_date")["return_pct"]
+    returns = trades.sort_values("entry_date")["return_pct"]
     growth = (1 + returns / 100).prod()
     return (growth - 1) * 100
+
+
+def _compounded_return_pct(group: pd.DataFrame) -> float:
+    """Equal-weighted average of each ticker's own compounded return.
+
+    Compounding trades from DIFFERENT tickers together as if they were one
+    sequential stream (the previous approach) is wrong: those trades happen
+    concurrently in real time, not one after another, and chaining thousands
+    of them as if serial explodes exponentially into meaningless numbers.
+    Compounding within a ticker (realistic) and then averaging equally
+    across tickers approximates splitting capital evenly across every
+    ticker trading this strategy in this regime -- still a simplification,
+    but not a nonsensical one.
+    """
+    per_ticker = group.groupby("ticker").apply(_ticker_compounded_return_pct)
+    return per_ticker.mean()
 
 
 def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:

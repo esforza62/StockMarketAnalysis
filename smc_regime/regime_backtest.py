@@ -82,7 +82,14 @@ def _compounded_return_pct(group: pd.DataFrame) -> float:
 
 
 def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
-    """Aggregate trade-level results into (regime, strategy) performance."""
+    """Aggregate trade-level results into (regime, direction, strategy) performance.
+
+    Trending and parabolic each split into "up" and "down" -- a long-only
+    strategy set behaves very differently riding a trend up vs. trying to
+    catch bounces in one going down, so collapsing direction away would
+    hide exactly the asymmetry that matters. Choppy has no direction
+    ("n/a") since it isn't trending either way.
+    """
 
     def _agg(group: pd.DataFrame) -> pd.Series:
         returns = group["return_pct"]
@@ -96,6 +103,6 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
             }
         )
 
-    summary = trades.groupby(["regime", "strategy"]).apply(_agg)
+    summary = trades.groupby(["regime", "direction", "strategy"]).apply(_agg)
     summary["trade_count"] = summary["trade_count"].astype(int)
-    return summary.reset_index().sort_values(["regime", "avg_return_pct"], ascending=[True, False])
+    return summary.reset_index().sort_values(["regime", "direction", "avg_return_pct"], ascending=[True, True, False])

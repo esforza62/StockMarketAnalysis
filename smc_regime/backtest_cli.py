@@ -25,13 +25,14 @@ def main() -> None:
     print(shown.round(2).to_string(index=False))
 
     print(f"\n{len(trades)} total trades across {trades['ticker'].nunique()} tickers.")
-    print("\nBest strategy per regime (by avg return/trade, min-trades filter applied):")
-    for regime, group in shown.groupby("regime"):
+    print("\nBest strategy per regime+direction (by avg return/trade, min-trades filter applied):")
+    for (regime, direction), group in shown.groupby(["regime", "direction"]):
         if group.empty:
             continue
         best = group.iloc[0]
+        label = regime if direction == "n/a" else f"{regime} ({direction})"
         print(
-            f"  {regime:<10} -> {best['strategy']} "
+            f"  {label:<18} -> {best['strategy']} "
             f"(avg {best['avg_return_pct']:.2f}%/trade, {int(best['trade_count'])} trades, {best['win_rate']:.0f}% win rate)"
         )
 

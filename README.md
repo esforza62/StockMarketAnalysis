@@ -10,8 +10,8 @@
   far from its moving average, path curving rather than straight)
 
 This is step one of a two-step workflow: classify the regime, then evaluate which
-trading strategy performs best conditioned on that regime (backtesting comes next,
-once the classifier's labels look right against real charts).
+trading strategy performs best conditioned on that regime. Step two -- the
+regime-conditioned backtest harness -- is implemented; see below.
 
 ### Usage
 
@@ -54,8 +54,30 @@ from smc_regime import classify_regime, RegimeThresholds
 result = classify_regime(df, RegimeThresholds(er_trend_min=0.25, extension_parabolic_min=2.5))
 ```
 
+### Regime-conditioned backtest
+
+`smc_regime.backtest_cli` backtests six candidate strategies (RSI mean reversion,
+Bollinger mean reversion, MACD crossover, EMA 20/50 trend cross, Donchian breakout,
+Supertrend) across any list of tickers, then tags every individual trade with the
+regime that was active *on its entry date* -- not the ticker's current regime -- and
+aggregates win rate / return by (regime, strategy). This answers "which strategy
+performs best in which regime?" directly from trade-level outcomes.
+
+```bash
+python -m smc_regime.backtest_cli AAPL MSFT TSLA --period 2y
+```
+
+```python
+from smc_regime import fetch_ohlcv, collect_trades, summarize_by_regime
+
+trades = collect_trades(["AAPL", "MSFT", "TSLA"], period="2y")
+print(summarize_by_regime(trades))
+```
+
+All strategies are long-only, single-position, defined in `smc_regime.strategies.STRATEGIES`.
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds
 - Add SMC structure signals (BOS/CHoCH frequency, order block respect rate) as a confirming layer
-- Build a backtest harness that runs candidate strategies filtered by regime label and compares performance
+- Add commission/slippage modeling and walk-forward validation to the backtest harness

@@ -26,7 +26,9 @@ DIRECTION_ORDER = {"up": 0, "down": 1, "flat": 2, "n/a": 3}
 
 
 def _latest_run(conn, interval: str) -> str | None:
-    row = conn.execute("SELECT MAX(run_at) FROM trades WHERE interval = ?", (interval,)).fetchone()
+    row = conn.execute(
+        "SELECT run_at FROM runs WHERE interval = ? ORDER BY run_at DESC LIMIT 1", (interval,)
+    ).fetchone()
     return row[0] if row else None
 
 
@@ -36,20 +38,27 @@ def _interval_payload(conn, interval: str) -> dict:
         return {"run_at": None, "ticker_count": 0, "total_trades": 0, "buckets": []}
 
     rows = conn.execute(
-        """SELECT regime, direction, strategy,
+        """SELECT t.regime, t.direction, s.name,
                   COUNT(*),
-                  AVG(CASE WHEN return_pct > 0 THEN 1.0 ELSE 0.0 END) * 100,
-                  AVG(return_pct),
-                  SUM(return_pct)
-           FROM trades WHERE run_at = ? AND interval = ?
-           GROUP BY regime, direction, strategy""",
+                  AVG(CASE WHEN t.return_pct > 0 THEN 1.0 ELSE 0.0 END) * 100,
+                  AVG(t.return_pct),
+                  SUM(t.return_pct)
+           FROM trades t
+           JOIN runs r ON r.id = t.run_id
+           JOIN strategies s ON s.id = t.strategy_id
+           WHERE r.run_at = ? AND r.interval = ?
+           GROUP BY t.regime, t.direction, s.name""",
         (run_at, interval),
     ).fetchall()
     ticker_count = conn.execute(
-        "SELECT COUNT(DISTINCT ticker) FROM trades WHERE run_at = ? AND interval = ?", (run_at, interval)
+        """SELECT COUNT(DISTINCT t.ticker) FROM trades t
+           JOIN runs r ON r.id = t.run_id WHERE r.run_at = ? AND r.interval = ?""",
+        (run_at, interval),
     ).fetchone()[0]
     total_trades = conn.execute(
-        "SELECT COUNT(*) FROM trades WHERE run_at = ? AND interval = ?", (run_at, interval)
+        """SELECT COUNT(*) FROM trades t
+           JOIN runs r ON r.id = t.run_id WHERE r.run_at = ? AND r.interval = ?""",
+        (run_at, interval),
     ).fetchone()[0]
 
     buckets: dict[str, list[dict]] = {}

@@ -7,6 +7,12 @@ sector-level stats (pooling every ticker that shares a GICS sector) ->
 full-population pooled stats (final fallback). A vector database was
 considered and rejected for this -- these are exact structured lookups
 (ticker, regime, direction, strategy), not similarity search.
+
+`run_at`/`interval` and `strategy` are normalized into small lookup
+tables rather than repeated as text on every trade row -- with 500k+
+rows and only a handful of distinct runs/strategies, that repetition was
+most of the file's size. `entry_date`/`exit_date` are stored as Unix
+epoch seconds (INTEGER) instead of ISO text for the same reason.
 """
 from __future__ import annotations
 
@@ -18,21 +24,32 @@ import pandas as pd
 DEFAULT_DB_PATH = Path(__file__).parent.parent / "backtest_logs" / "smc_regime.db"
 
 _SCHEMA = """
-CREATE TABLE IF NOT EXISTS trades (
+CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY,
     run_at TEXT NOT NULL,
     interval TEXT NOT NULL,
+    UNIQUE (run_at, interval)
+);
+
+CREATE TABLE IF NOT EXISTS strategies (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS trades (
+    run_id INTEGER NOT NULL REFERENCES runs(id),
     ticker TEXT NOT NULL,
-    strategy TEXT NOT NULL,
+    strategy_id INTEGER NOT NULL REFERENCES strategies(id),
     regime TEXT NOT NULL,
     direction TEXT NOT NULL,
-    entry_date TEXT NOT NULL,
-    exit_date TEXT NOT NULL,
+    entry_date INTEGER NOT NULL,
+    exit_date INTEGER NOT NULL,
     return_pct REAL NOT NULL,
     win INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trades_lookup
-    ON trades (interval, regime, direction, strategy, ticker);
+    ON trades (run_id, regime, direction, strategy_id, ticker);
 
 CREATE TABLE IF NOT EXISTS ticker_metadata (
     ticker TEXT PRIMARY KEY,
@@ -53,27 +70,50 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 
 def clear_trades(conn: sqlite3.Connection) -> None:
-    """Drop all trade rows -- use before a full rebuild (e.g. a new start
-    date or a changed tracking universe), not for routine daily snapshots."""
+    """Drop all trade rows (and the run records they belonged to) -- use
+    before a full rebuild (e.g. a new start date or a changed tracking
+    universe), not for routine daily snapshots. `strategies` is left
+    alone since strategy names are stable across rebuilds."""
     conn.execute("DELETE FROM trades")
+    conn.execute("DELETE FROM runs")
     conn.commit()
+
+
+def _get_or_create_run_id(conn: sqlite3.Connection, run_at: str, interval: str) -> int:
+    conn.execute("INSERT OR IGNORE INTO runs (run_at, interval) VALUES (?, ?)", (run_at, interval))
+    return conn.execute(
+        "SELECT id FROM runs WHERE run_at = ? AND interval = ?", (run_at, interval)
+    ).fetchone()[0]
+
+
+def _strategy_ids(conn: sqlite3.Connection, names: list[str]) -> dict[str, int]:
+    unique_names = list(set(names))
+    conn.executemany("INSERT OR IGNORE INTO strategies (name) VALUES (?)", [(n,) for n in unique_names])
+    rows = conn.execute(
+        f"SELECT id, name FROM strategies WHERE name IN ({', '.join(['?'] * len(unique_names))})", unique_names
+    ).fetchall()
+    return {name: id_ for id_, name in rows}
 
 
 def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: pd.DataFrame) -> None:
     """Replace any existing rows for this (run_at, interval) then insert
     fresh trade-level rows -- keeps re-running a snapshot idempotent."""
-    conn.execute("DELETE FROM trades WHERE run_at = ? AND interval = ?", (run_at, interval))
+    run_id = _get_or_create_run_id(conn, run_at, interval)
+    conn.execute("DELETE FROM trades WHERE run_id = ?", (run_id,))
     if trades.empty:
         conn.commit()
         return
 
+    strategy_ids = _strategy_ids(conn, trades["strategy"].tolist())
+
     rows = trades.copy()
-    rows["run_at"] = run_at
-    rows["interval"] = interval
-    rows["entry_date"] = rows["entry_date"].astype(str)
-    rows["exit_date"] = rows["exit_date"].astype(str)
+    rows["run_id"] = run_id
+    rows["strategy_id"] = rows["strategy"].map(strategy_ids)
+    rows["entry_date"] = pd.to_datetime(rows["entry_date"], utc=True).astype("int64") // 10**9
+    rows["exit_date"] = pd.to_datetime(rows["exit_date"], utc=True).astype("int64") // 10**9
     rows["win"] = rows["win"].astype(int)
-    cols = ["run_at", "interval", "ticker", "strategy", "regime", "direction", "entry_date", "exit_date", "return_pct", "win"]
+
+    cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win"]
     conn.executemany(
         f"INSERT INTO trades ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         rows[cols].itertuples(index=False, name=None),
@@ -96,8 +136,10 @@ def upsert_ticker_metadata(conn: sqlite3.Connection, rows: list[dict[str, str]],
 
 
 def _latest_run(conn: sqlite3.Connection, interval: str) -> str | None:
-    row = conn.execute("SELECT MAX(run_at) FROM trades WHERE interval = ?", (interval,)).fetchone()
-    return row[0] if row and row[0] else None
+    row = conn.execute(
+        "SELECT run_at FROM runs WHERE interval = ? ORDER BY run_at DESC LIMIT 1", (interval,)
+    ).fetchone()
+    return row[0] if row else None
 
 
 def _aggregate(rows: pd.DataFrame) -> dict | None:
@@ -132,7 +174,11 @@ def best_strategy(
         return None
 
     base = pd.read_sql_query(
-        "SELECT * FROM trades WHERE run_at = ? AND interval = ? AND regime = ? AND direction = ?",
+        """SELECT t.ticker, s.name AS strategy, t.return_pct
+           FROM trades t
+           JOIN runs r ON r.id = t.run_id
+           JOIN strategies s ON s.id = t.strategy_id
+           WHERE r.run_at = ? AND r.interval = ? AND t.regime = ? AND t.direction = ?""",
         conn,
         params=(run_at, interval, regime, direction),
     )

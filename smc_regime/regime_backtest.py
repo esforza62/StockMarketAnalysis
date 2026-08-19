@@ -21,6 +21,7 @@ def collect_trades(
     period: str = "2y",
     interval: str = "1d",
     t: RegimeThresholds = RegimeThresholds(),
+    start_date: str | None = None,
 ) -> pd.DataFrame:
     """Backtest every strategy on every ticker and tag each trade with the
     regime/direction active on its entry date."""
@@ -28,7 +29,7 @@ def collect_trades(
 
     for ticker in tickers:
         try:
-            df = fetch_ohlcv(ticker, period=period, interval=interval)
+            df = fetch_ohlcv(ticker, period=period, interval=interval, start_date=start_date)
         except Exception:
             continue
         regime = classify_regime(df, t)

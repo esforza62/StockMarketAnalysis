@@ -20,15 +20,16 @@ from .regime_backtest import collect_trades, summarize_by_regime
 INTERVAL_PERIODS = {"1d": "2y", "1h": "730d"}
 
 
-def run_snapshot(tickers: list[str], interval: str, conn=None) -> dict:
+def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None) -> dict:
     period = INTERVAL_PERIODS[interval]
-    trades = collect_trades(tickers, period=period, interval=interval)
+    trades = collect_trades(tickers, period=period, interval=interval, start_date=start_date)
     run_at = datetime.now(timezone.utc).isoformat()
 
     record = {
         "run_at": run_at,
         "interval": interval,
-        "period": period,
+        "period": period if not start_date else None,
+        "start_date": start_date,
         "ticker_count": len(tickers),
         "tickers_with_trades": int(trades["ticker"].nunique()) if not trades.empty else 0,
         "total_trades": int(len(trades)),
@@ -52,6 +53,7 @@ def main() -> None:
     parser.add_argument("--log-file", default="backtest_logs/regime_strategy_log.jsonl", help="JSONL file to append results to")
     parser.add_argument("--db-file", default=str(db_module.DEFAULT_DB_PATH), help="SQLite file to write trade-level rows to")
     parser.add_argument("--skip-metadata", action="store_true", help="skip refreshing ticker exchange/sector metadata")
+    parser.add_argument("--start-date", default=None, help="fixed calendar anchor (e.g. 2019-01-01) instead of the default rolling lookback -- use for a full rebuild")
     args = parser.parse_args()
 
     tickers = [line.strip() for line in Path(args.tickers_file).read_text().splitlines() if line.strip()]
@@ -61,6 +63,9 @@ def main() -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     conn = db_module.connect(args.db_file)
 
+    if args.start_date:
+        db_module.clear_trades(conn)
+
     if not args.skip_metadata:
         from . import metadata
         rows = metadata.build_ticker_metadata(tickers)
@@ -68,7 +73,7 @@ def main() -> None:
 
     with log_path.open("a") as f:
         for interval in intervals:
-            record = run_snapshot(tickers, interval, conn=conn)
+            record = run_snapshot(tickers, interval, conn=conn, start_date=args.start_date)
             f.write(json.dumps(record) + "\n")
             print(f"{interval}: {record['total_trades']} trades across {record['tickers_with_trades']}/{record['ticker_count']} tickers")
 

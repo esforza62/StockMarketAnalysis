@@ -8,12 +8,38 @@ outcomes, rather than proxying regime with a whole-period snapshot.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pandas as pd
 
 from .backtest import backtest_strategy
 from .data import fetch_ohlcv
 from .regime import RegimeThresholds, classify_regime
 from .strategies import STRATEGIES
+
+# Tiingo's historical-prices endpoint has no batch/multi-ticker mode --
+# confirmed by testing directly against the API, it treats a comma-joined
+# ticker string as one invalid symbol. Every ticker needs its own request,
+# so fetching is network-latency-bound, not compute-bound: firing requests
+# concurrently instead of waiting on each one sequentially is what actually
+# fixes the wall-clock scaling problem as the tracking universe grows.
+_FETCH_WORKERS = 16
+
+
+def _fetch_all(tickers: list[str], period: str, interval: str, start_date: str | None) -> dict[str, pd.DataFrame]:
+    dfs: dict[str, pd.DataFrame] = {}
+    with ThreadPoolExecutor(max_workers=_FETCH_WORKERS) as pool:
+        futures = {
+            pool.submit(fetch_ohlcv, ticker, period=period, interval=interval, start_date=start_date): ticker
+            for ticker in tickers
+        }
+        for future in as_completed(futures):
+            ticker = futures[future]
+            try:
+                dfs[ticker] = future.result()
+            except Exception:
+                continue
+    return dfs
 
 
 def collect_trades(
@@ -27,10 +53,10 @@ def collect_trades(
     regime/direction active on its entry date."""
     records = []
 
+    dfs = _fetch_all(tickers, period, interval, start_date)
     for ticker in tickers:
-        try:
-            df = fetch_ohlcv(ticker, period=period, interval=interval, start_date=start_date)
-        except Exception:
+        df = dfs.get(ticker)
+        if df is None:
             continue
         regime = classify_regime(df, t)
 

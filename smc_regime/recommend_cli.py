@@ -32,8 +32,8 @@ def best_strategy(summary: list[dict], regime: str, direction: str, min_trades: 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Recommend a strategy for a ticker's current regime.")
     parser.add_argument("ticker")
-    parser.add_argument("--period", default="6mo", help="yfinance period for live regime classification")
-    parser.add_argument("--interval", default="1d", help="yfinance interval, e.g. 1d, 1h")
+    parser.add_argument("--period", default="6mo", help="lookback period for live regime classification")
+    parser.add_argument("--interval", default="1d", help="bar interval, e.g. 1d, 1h")
     parser.add_argument("--log-file", default="backtest_logs/regime_strategy_log.jsonl", help="path to the snapshot log")
     parser.add_argument("--min-trades", type=int, default=20, help="minimum historical trades to trust a strategy match")
     args = parser.parse_args()

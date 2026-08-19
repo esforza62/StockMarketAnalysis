@@ -15,7 +15,12 @@ regime-conditioned backtest harness -- is implemented; see below.
 
 ### Usage
 
+Requires a [Tiingo](https://www.tiingo.com/) API key (daily EOD data works on the
+free tier; hourly/intraday needs a paid tier for real historical depth).
+Set it as an environment variable -- never commit it:
+
 ```bash
+export TIINGO_API_KEY=your_token_here
 pip install -r requirements.txt
 python -m smc_regime.cli AAPL --period 6mo
 ```

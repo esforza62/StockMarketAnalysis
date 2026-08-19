@@ -10,8 +10,8 @@ from .regime_backtest import collect_trades, summarize_by_regime
 def main() -> None:
     parser = argparse.ArgumentParser(description="Backtest strategies by regime across tickers.")
     parser.add_argument("tickers", nargs="+", help="Tickers to backtest, e.g. AAPL MSFT TSLA")
-    parser.add_argument("--period", default="2y", help="yfinance-style period, e.g. 1y, 2y")
-    parser.add_argument("--interval", default="1d", help="yfinance-style interval, e.g. 1d")
+    parser.add_argument("--period", default="2y", help="lookback period, e.g. 1y, 2y")
+    parser.add_argument("--interval", default="1d", help="bar interval, e.g. 1d")
     parser.add_argument("--min-trades", type=int, default=5, help="hide (regime, strategy) rows with fewer trades than this")
     args = parser.parse_args()
 

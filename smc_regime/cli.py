@@ -20,8 +20,8 @@ DISPLAY_COLS = [
 def main() -> None:
     parser = argparse.ArgumentParser(description="Classify a stock's recent price-movement regime.")
     parser.add_argument("ticker")
-    parser.add_argument("--period", default="6mo", help="yfinance period, e.g. 3mo, 6mo, 1y, 2y")
-    parser.add_argument("--interval", default="1d", help="yfinance interval, e.g. 1d, 1h")
+    parser.add_argument("--period", default="6mo", help="lookback period, e.g. 3mo, 6mo, 1y, 2y")
+    parser.add_argument("--interval", default="1d", help="bar interval, e.g. 1d, 1h")
     parser.add_argument("--tail", type=int, default=10, help="rows to print")
     args = parser.parse_args()
 

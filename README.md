@@ -15,8 +15,12 @@ once the classifier's labels look right against real charts).
 
 ### Usage
 
+Data comes from [Tiingo](https://www.tiingo.com/); set your API key as an environment
+variable before fetching data:
+
 ```bash
 pip install -r requirements.txt
+export TIINGO_API_KEY=your_token_here
 python -m smc_regime.cli AAPL --period 6mo
 ```
 

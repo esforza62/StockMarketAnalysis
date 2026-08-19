@@ -107,6 +107,22 @@ regime/direction) to sector-level stats to the full-population pooled stats:
 python -m smc_regime.recommend_cli AAPL
 ```
 
+### Pine Script: viewing the live regime on a TradingView chart
+
+`pinescript/smc_regime_classifier.pine` is a hand-ported mirror of
+`smc_regime.regime.classify_regime()` -- same Kaufman Efficiency Ratio / ADX
+trend gate, same EMA-extension + ATR%-acceleration parabolic gate, same
+rolling-slope direction call, with matching default thresholds. Add it as an
+indicator on any TradingView chart to see the current regime (choppy /
+trending / parabolic, with direction) shaded on the price panel, a live
+stats table, and alerts on regime/direction changes -- no live data feed
+from this repo required, since it computes everything from the chart's own
+bars.
+
+There's no automatic sync between the two: if `RegimeThresholds` or the
+indicator formulas in `smc_regime/indicators.py` change, update the Pine
+script by hand to match.
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

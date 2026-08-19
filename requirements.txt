@@ -1,4 +1,5 @@
 requests
 python-dateutil
+yfinance
 pandas
 numpy

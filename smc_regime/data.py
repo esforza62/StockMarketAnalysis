@@ -7,6 +7,7 @@ from datetime import date
 
 import pandas as pd
 import requests
+import yfinance as yf
 from dateutil.relativedelta import relativedelta
 
 TIINGO_BASE_URL = "https://api.tiingo.com/tiingo/daily"
@@ -30,14 +31,9 @@ def _period_to_start_date(period: str) -> str:
     return (date.today() - relativedelta(**{_PERIOD_UNITS[unit]: int(count)})).isoformat()
 
 
-def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
-    """Fetch daily OHLCV history for a ticker from Tiingo."""
+def _fetch_tiingo(ticker: str, period: str, interval: str, api_key: str) -> pd.DataFrame:
     if interval != "1d":
-        raise ValueError(f"Only interval='1d' is supported (got {interval!r})")
-
-    api_key = os.environ.get("TIINGO_API_KEY")
-    if not api_key:
-        raise RuntimeError("Set the TIINGO_API_KEY environment variable to fetch market data")
+        raise ValueError(f"Tiingo source only supports interval='1d' (got {interval!r})")
 
     resp = requests.get(
         f"{TIINGO_BASE_URL}/{ticker}/prices",
@@ -53,3 +49,21 @@ def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d") -> pd.Dat
     df.index = pd.to_datetime(df["date"])
     df = df.rename(columns=_ADJUSTED_COLS)
     return df[list(_ADJUSTED_COLS.values())]
+
+
+def _fetch_yfinance(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    df = yf.Ticker(ticker).history(period=period, interval=interval)
+    if df.empty:
+        raise ValueError(f"No data returned for {ticker!r} (period={period!r}, interval={interval!r})")
+    return df[["Open", "High", "Low", "Close", "Volume"]]
+
+
+def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    """Fetch OHLCV history for a ticker.
+
+    Uses Tiingo when TIINGO_API_KEY is set, falling back to yfinance otherwise.
+    """
+    api_key = os.environ.get("TIINGO_API_KEY")
+    if api_key:
+        return _fetch_tiingo(ticker, period, interval, api_key)
+    return _fetch_yfinance(ticker, period, interval)

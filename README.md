@@ -15,8 +15,8 @@ once the classifier's labels look right against real charts).
 
 ### Usage
 
-Data comes from [Tiingo](https://www.tiingo.com/); set your API key as an environment
-variable before fetching data:
+Data comes from [Tiingo](https://www.tiingo.com/) when `TIINGO_API_KEY` is set, falling
+back to yfinance otherwise:
 
 ```bash
 pip install -r requirements.txt

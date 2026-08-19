@@ -61,12 +61,14 @@ result = classify_regime(df, RegimeThresholds(er_trend_min=0.25, extension_parab
 
 ### Regime-conditioned backtest
 
-`smc_regime.backtest_cli` backtests six candidate strategies (RSI mean reversion,
-Bollinger mean reversion, MACD crossover, EMA 20/50 trend cross, Donchian breakout,
-Supertrend) across any list of tickers, then tags every individual trade with the
-regime that was active *on its entry date* -- not the ticker's current regime -- and
-aggregates win rate / return by (regime, strategy). This answers "which strategy
-performs best in which regime?" directly from trade-level outcomes.
+`smc_regime.backtest_cli` backtests every strategy in `smc_regime.strategies.STRATEGIES`
+(RSI mean reversion, Bollinger mean reversion, MACD crossover, EMA 20/50 trend cross,
+Donchian breakout, Supertrend, VWAP trend structure, plus three RSI+MACD combinations --
+oversold-reversal, trend-continuation, and RSI-filtered MACD) across any list of tickers,
+then tags every individual trade with the regime that was active *on its entry date* --
+not the ticker's current regime -- and aggregates win rate / return by (regime, strategy).
+This answers "which strategy performs best in which regime?" directly from trade-level
+outcomes.
 
 ```bash
 python -m smc_regime.backtest_cli AAPL MSFT TSLA --period 2y

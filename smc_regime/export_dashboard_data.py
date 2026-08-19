@@ -16,6 +16,9 @@ STRATEGY_NAMES = {
     "donchian": "Donchian Breakout",
     "supertrend": "Supertrend",
     "vwap_trend": "VWAP Trend Structure",
+    "rsi_macd_reversal": "RSI+MACD Reversal",
+    "rsi_macd_trend": "RSI+MACD Trend Continuation",
+    "rsi_macd_filter": "RSI-Filtered MACD",
 }
 MIN_TRADES = 15
 REGIME_ORDER = {"choppy": 0, "trending": 1, "parabolic": 2}

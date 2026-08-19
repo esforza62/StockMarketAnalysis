@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .venv/
+
+# Rewritten in full every night, doesn't diff well as a git blob, and
+# would grow repo history by ~one full copy per day forever. Published
+# as a release asset instead -- see smc_regime/fetch_db.py.
+backtest_logs/smc_regime.db

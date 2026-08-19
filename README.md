@@ -97,8 +97,17 @@ python -m smc_regime.daily_snapshot --intervals 1d,1h
 ```
 
 This runs daily via GitHub Actions (`.github/workflows/daily-snapshot.yml`),
-which commits the updated data back to the repo automatically -- set
-`TIINGO_API_KEY` as a repository secret for it to run.
+which commits the JSONL log and ticker-metadata cache back to the repo
+directly -- set `TIINGO_API_KEY` as a repository secret for it to run.
+
+`backtest_logs/smc_regime.db` itself is **not** committed to git (it's
+rewritten in full every night, which would grow the repo's history
+unboundedly and risks hitting GitHub's 100MB per-file limit). It's
+published as a GitHub Release asset instead. After cloning, fetch it with:
+
+```bash
+python -m smc_regime.fetch_db
+```
 
 `smc_regime.recommend_cli` classifies a ticker's current regime and looks up
 the best-fitting strategy from the SQLite store, falling back from

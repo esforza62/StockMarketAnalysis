@@ -26,11 +26,29 @@ jobs:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: python -m smc_regime.daily_snapshot --intervals 1d,1h --start-date 2019-01-01
 
-      - name: Commit and push updated data
+      # backtest_logs/smc_regime.db is rewritten in full every run and
+      # doesn't diff well as a git blob -- committing it directly would
+      # grow repo history by ~one full copy per day and risks hitting
+      # GitHub's 100MB per-file limit as more strategies/tickers get
+      # added. Publish it as a release asset instead: no size limit that
+      # matters here, no metered storage/bandwidth, and it never touches
+      # git history. See smc_regime/fetch_db.py for the download side.
+      - name: Publish SQLite snapshot to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view data-latest >/dev/null 2>&1; then
+            gh release create data-latest \
+              --title "Latest data snapshot" \
+              --notes "Auto-updated nightly by the daily-snapshot workflow. Download smc_regime.db (python -m smc_regime.fetch_db) to get the current trade-level store -- this release is overwritten in place, not versioned history."
+          fi
+          gh release upload data-latest backtest_logs/smc_regime.db --clobber
+
+      - name: Commit and push updated logs
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add backtest_logs/ smc_regime/data/exchange_cache.json
+          git add backtest_logs/regime_strategy_log.jsonl smc_regime/data/exchange_cache.json
           git diff --cached --quiet && exit 0
 
           git commit -m "Daily regime-strategy snapshot for $(date -u +%Y-%m-%d)"

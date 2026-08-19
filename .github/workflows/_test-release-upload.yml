@@ -1,0 +1,25 @@
+name: TEMP - test release upload mechanics
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create dummy asset and test release create/upload/clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "test payload $(date -u)" > dummy.db
+          if ! gh release view data-latest >/dev/null 2>&1; then
+            gh release create data-latest --title "Latest data snapshot" --notes "test"
+          fi
+          gh release upload data-latest dummy.db --clobber
+          echo "upload ok"
+          gh release view data-latest

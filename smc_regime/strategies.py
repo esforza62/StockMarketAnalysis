@@ -73,6 +73,46 @@ def vwap_trend_structure(df: pd.DataFrame, window: int = 20, slope_window: int =
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def rsi_macd_reversal(df: pd.DataFrame, window: int = 14, oversold: float = 30.0, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """Oversold RSI + bullish MACD cross -- momentum confirms a reversal off
+    an extreme low, rather than mean-reverting on RSI alone."""
+    r = ind.rsi(df["Close"], window)
+    m = ind.macd(df["Close"], fast, slow, signal)
+    macd_bull_cross = (m["macd"] > m["signal"]) & (m["macd"].shift(1) <= m["signal"].shift(1))
+    macd_bear_cross = (m["macd"] < m["signal"]) & (m["macd"].shift(1) >= m["signal"].shift(1))
+    entry = macd_bull_cross & (r < oversold)
+    exit_ = macd_bear_cross
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def rsi_macd_trend_continuation(df: pd.DataFrame, window: int = 14, band_low: float = 40.0, band_high: float = 70.0, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """RSI holding in a healthy trend band (not overbought/oversold) confirms
+    the trend isn't exhausted, while a re-accelerating MACD histogram --
+    troughing and turning back up -- is the actual entry trigger."""
+    r = ind.rsi(df["Close"], window)
+    hist = ind.macd(df["Close"], fast, slow, signal)["histogram"]
+    hist_rising = hist.diff() > 0
+    hist_reaccelerating = hist_rising & ~hist_rising.shift(1).fillna(False)
+    hist_decelerating = ~hist_rising & hist_rising.shift(1).fillna(False)
+    in_band = r.between(band_low, band_high)
+    entry = hist_reaccelerating & in_band
+    exit_ = hist_decelerating
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def rsi_macd_filter(df: pd.DataFrame, window: int = 14, midline: float = 50.0, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
+    """RSI above/below its midline filters MACD crosses to only the ones
+    that agree with the prevailing momentum bias, instead of trading every
+    MACD cross regardless of context."""
+    r = ind.rsi(df["Close"], window)
+    m = ind.macd(df["Close"], fast, slow, signal)
+    macd_bull_cross = (m["macd"] > m["signal"]) & (m["macd"].shift(1) <= m["signal"].shift(1))
+    macd_bear_cross = (m["macd"] < m["signal"]) & (m["macd"].shift(1) >= m["signal"].shift(1))
+    entry = macd_bull_cross & (r > midline)
+    exit_ = macd_bear_cross
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -81,4 +121,7 @@ STRATEGIES = {
     "donchian": donchian_breakout,
     "supertrend": supertrend_following,
     "vwap_trend": vwap_trend_structure,
+    "rsi_macd_reversal": rsi_macd_reversal,
+    "rsi_macd_trend": rsi_macd_trend_continuation,
+    "rsi_macd_filter": rsi_macd_filter,
 }

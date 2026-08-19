@@ -39,7 +39,20 @@ def adx(df: pd.DataFrame, window: int = 14) -> pd.Series:
     minus_di = 100 * minus_dm.ewm(alpha=1 / window, adjust=False).mean() / atr_smooth
 
     dx = (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, np.nan) * 100
-    return dx.ewm(alpha=1 / window, adjust=False).mean()
+    result = dx.ewm(alpha=1 / window, adjust=False).mean()
+
+    # ADX is a doubly-smoothed value (TR->ATR, then DX->ADX), so it needs
+    # roughly 2*window bars before the smoothing has actually accumulated
+    # enough data to mean anything. Unlike efficiency_ratio/rolling_slope
+    # (which use .rolling(window) and correctly return NaN until a full
+    # window exists), .ewm() happily produces a value from the very first
+    # bar -- e.g. a single one-directional move right at the start of a
+    # fetch window can make dx compute to exactly 100, which then reads as
+    # a maximally strong trend before the indicator has any real basis for
+    # that. Mask it out explicitly so early-window noise can't masquerade
+    # as a trend signal.
+    result.iloc[: min(2 * window - 1, len(result))] = np.nan
+    return result
 
 
 def efficiency_ratio(close: pd.Series, window: int = 14) -> pd.Series:

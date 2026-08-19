@@ -156,6 +156,9 @@ direction = regime == "choppy" ? "n/a" : (slopeVal > 0 ? "up" : slopeVal < 0 ? "
 colChoppy    = color.new(#97A7B6, 0)
 colTrending  = color.new(#5B9FE0, 0)
 colParabolic = color.new(#E2933F, 0)
+colTableBg    = color.new(#0E1620, 15)
+colTableLabel = color.new(#8A9AAA, 0)
+colTableValue = color.new(#E7ECF1, 0)
 
 curColor = regime == "parabolic" ? colParabolic : regime == "trending" ? colTrending : colChoppy
 dirSuffix = direction == "up" ? " (up)" : direction == "down" ? " (down)" : direction == "flat" ? " (flat)" : ""
@@ -166,22 +169,22 @@ bgcolor(showBg ? color.new(curColor, bgOpacity) : na)
 regimeChanged = bar_index > 0 and (regime != regime[1] or direction != direction[1])
 plotchar(showMarks and regimeChanged ? low : na, "Regime/direction change", "•", location.belowbar, color = curColor, size = size.tiny)
 
-var table statsTable = table.new(tablePosition, 2, 7, border_width = 1, bgcolor = color.new(color.black, 75))
+var table statsTable = table.new(tablePosition, 2, 7, border_width = 1, bgcolor = colTableBg)
 if showTable and barstate.islast
-    table.cell(statsTable, 0, 0, "Regime", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 0, 0, "Regime", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
     table.cell(statsTable, 1, 0, str.upper(regime) + dirArrow, text_color = curColor, text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 1, "ER", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 1, na(efficiencyRatio) ? "n/a" : str.tostring(efficiencyRatio, "#.###"), text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 2, "ADX", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 2, na(adxVal) ? "n/a" : str.tostring(adxVal, "#.##"), text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 3, "ATR%", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 3, na(atrPct) ? "n/a" : str.tostring(atrPct, "#.##"), text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 4, "ATR% ROC", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 4, na(atrPctRoc) ? "n/a" : str.tostring(atrPctRoc * 100, "#.#") + "%", text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 5, "Ext (ATR)", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 5, na(emaExtensionAtr) ? "n/a" : str.tostring(emaExtensionAtr, "#.##"), text_halign = text.align_right, text_size = tableSize)
-    table.cell(statsTable, 0, 6, "Slope", text_color = color.gray, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 6, na(slopeVal) ? "n/a" : str.tostring(slopeVal, "#.###"), text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 1, "ER", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 1, na(efficiencyRatio) ? "n/a" : str.tostring(efficiencyRatio, "#.###"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 2, "ADX", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 2, na(adxVal) ? "n/a" : str.tostring(adxVal, "#.##"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 3, "ATR%", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 3, na(atrPct) ? "n/a" : str.tostring(atrPct, "#.##"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 4, "ATR% ROC", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 4, na(atrPctRoc) ? "n/a" : str.tostring(atrPctRoc * 100, "#.#") + "%", text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 5, "Ext (ATR)", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 5, na(emaExtensionAtr) ? "n/a" : str.tostring(emaExtensionAtr, "#.##"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 6, "Slope", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 6, na(slopeVal) ? "n/a" : str.tostring(slopeVal, "#.###"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
 
 // ---------------------------------------------------------------------
 // Alerts

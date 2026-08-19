@@ -70,6 +70,26 @@ def ema(close: pd.Series, window: int) -> pd.Series:
     return close.ewm(span=window, adjust=False).mean()
 
 
+def wma(series: pd.Series, window: int) -> pd.Series:
+    """Linearly weighted moving average -- the most recent bar in the
+    window gets the highest weight, the oldest the lowest."""
+    weights = np.arange(1, window + 1, dtype=float)
+    return series.rolling(window).apply(lambda x: np.dot(x, weights) / weights.sum(), raw=True)
+
+
+def hull_moving_average(close: pd.Series, window: int = 20) -> pd.Series:
+    """Hull Moving Average (Alan Hull): WMA(2*WMA(n/2) - WMA(n), sqrt(n)).
+
+    Reduces the lag of a plain WMA/EMA by overweighting the most recent
+    half-window move, then re-smoothing over a shorter sqrt(n) window --
+    tracks price more tightly through turns while still filtering noise.
+    """
+    half_window = max(1, window // 2)
+    sqrt_window = max(1, round(window ** 0.5))
+    raw_hma = 2 * wma(close, half_window) - wma(close, window)
+    return wma(raw_hma, sqrt_window)
+
+
 def ema_extension_atr_units(df: pd.DataFrame, ema_window: int = 20, atr_window: int = 14) -> pd.Series:
     """Signed distance of close from its EMA, expressed in ATR units."""
     close = df["Close"]

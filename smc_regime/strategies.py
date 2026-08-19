@@ -113,6 +113,43 @@ def rsi_macd_filter(df: pd.DataFrame, window: int = 14, midline: float = 50.0, f
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def rsi_hma_trend(
+    df: pd.DataFrame,
+    hma_window: int = 25,
+    hma_slope_lookback: int = 3,
+    rsi_window: int = 14,
+    dip_threshold: float = 35.0,
+    confirm_threshold: float = 45.0,
+    dip_lookback: int = 10,
+    exit_rsi: float = 75.0,
+) -> pd.DataFrame:
+    """Long side only -- see the module-level note on rsi_hma_trend's short
+    side and trailing-stop exit, both dropped as not portable to this
+    long-only, fixed-signal engine.
+
+    Entry: price above a rising HMA (trend filter) confirms the setup;
+    RSI dipping into oversold (< dip_threshold) and then crossing back
+    above confirm_threshold is the actual trigger -- a pullback-in-uptrend
+    entry, not a straight oversold bounce.
+    Exit: RSI reaching overbought (>= exit_rsi), or price closing back
+    below the HMA (trend invalidation) -- whichever comes first.
+    """
+    close = df["Close"]
+    hma = ind.hull_moving_average(close, hma_window)
+    hma_rising = hma > hma.shift(hma_slope_lookback)
+    r = ind.rsi(close, rsi_window)
+
+    dipped_recently = (r < dip_threshold).rolling(dip_lookback, min_periods=1).max().shift(1).fillna(0).astype(bool)
+    confirm_cross = (r > confirm_threshold) & (r.shift(1) <= confirm_threshold)
+    entry = (close > hma) & hma_rising & confirm_cross & dipped_recently
+
+    exit_rsi_hit = (r >= exit_rsi) & (r.shift(1) < exit_rsi)
+    exit_below_hma = (close < hma) & (close.shift(1) >= hma.shift(1))
+    exit_ = exit_rsi_hit | exit_below_hma
+
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -124,4 +161,5 @@ STRATEGIES = {
     "rsi_macd_reversal": rsi_macd_reversal,
     "rsi_macd_trend": rsi_macd_trend_continuation,
     "rsi_macd_filter": rsi_macd_filter,
+    "rsi_hma": rsi_hma_trend,
 }

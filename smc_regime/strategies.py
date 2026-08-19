@@ -150,6 +150,43 @@ def rsi_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def rsi_dual_hma_trend(
+    df: pd.DataFrame,
+    hma_window: int = 25,
+    hma_slope_lookback: int = 3,
+    slow_rsi_window: int = 21,
+    fast_rsi_window: int = 5,
+    midline: float = 50.0,
+) -> pd.DataFrame:
+    """Long side only -- dual RSI (21-period "regime" + 5-period "trigger")
+    variant of rsi_hma_trend, same HMA(25) trend filter.
+
+    Entry: slow RSI(21) > midline confirms the broader bullish bias; fast
+    RSI(5) crossing down through midline is the trigger -- buying the start
+    of a dip within a regime the slow RSI says is still bullish, rather
+    than buying the dip's resolution (which is what plain rsi_hma_trend
+    does). Price above a rising HMA still gates both.
+    Exit: slow RSI(21) crossing back below midline (bullish thesis broken)
+    or price closing back below the HMA -- deliberately NOT using the fast
+    RSI for exit, since a 5-period RSI is too twitchy and would trigger on
+    the very pullback noise this entry is trying to buy.
+    """
+    close = df["Close"]
+    hma = ind.hull_moving_average(close, hma_window)
+    hma_rising = hma > hma.shift(hma_slope_lookback)
+    slow_r = ind.rsi(close, slow_rsi_window)
+    fast_r = ind.rsi(close, fast_rsi_window)
+
+    fast_dip_cross = (fast_r < midline) & (fast_r.shift(1) >= midline)
+    entry = fast_dip_cross & (slow_r > midline) & (close > hma) & hma_rising
+
+    slow_exit_cross = (slow_r < midline) & (slow_r.shift(1) >= midline)
+    exit_below_hma = (close < hma) & (close.shift(1) >= hma.shift(1))
+    exit_ = slow_exit_cross | exit_below_hma
+
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -162,4 +199,5 @@ STRATEGIES = {
     "rsi_macd_trend": rsi_macd_trend_continuation,
     "rsi_macd_filter": rsi_macd_filter,
     "rsi_hma": rsi_hma_trend,
+    "rsi_dual_hma": rsi_dual_hma_trend,
 }

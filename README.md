@@ -81,6 +81,32 @@ print(summarize_by_regime(trades))
 
 All strategies are long-only, single-position, defined in `smc_regime.strategies.STRATEGIES`.
 
+### Daily snapshot + recommendations
+
+`smc_regime.daily_snapshot` runs the regime-conditioned backtest across a
+tracking universe (`smc_regime/tracking_universe.txt`) at one or more
+intervals, and stores trade-level results in a SQLite file
+(`backtest_logs/smc_regime.db`) plus an append-only JSONL log
+(`backtest_logs/regime_strategy_log.jsonl`). It also refreshes each
+ticker's exchange and GICS sector into a `ticker_metadata` table.
+
+```bash
+python -m smc_regime.daily_snapshot --intervals 1d,1h
+```
+
+This runs daily via GitHub Actions (`.github/workflows/daily-snapshot.yml`),
+which commits the updated data back to the repo automatically -- set
+`TIINGO_API_KEY` as a repository secret for it to run.
+
+`smc_regime.recommend_cli` classifies a ticker's current regime and looks up
+the best-fitting strategy from the SQLite store, falling back from
+symbol-specific stats (once a ticker has >= 15 of its own trades in that
+regime/direction) to sector-level stats to the full-population pooled stats:
+
+```bash
+python -m smc_regime.recommend_cli AAPL
+```
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

@@ -1,10 +1,13 @@
 # Roadmap: from daily tracking to a swing-trading reference tool
 
-Status as of 2026-08-18: **data collection phase.** The daily snapshot Routine
-is running (1d + 1h, `smc_regime/tracking_universe.txt`, logged to
-`backtest_logs/regime_strategy_log.jsonl`). Nothing below should be built
-until the user says to start -- this file exists so the plan survives
-independent of any one conversation.
+Status as of 2026-08-19: **build phase, in progress.** Data source migrated
+to Tiingo (paid tier). SQLite trade-level store (`backtest_logs/smc_regime.db`)
+and `ticker_metadata` (exchange + GICS sector, all 132 tracked tickers
+resolved) are live; `recommend_cli` now queries SQLite with the
+symbol -> sector -> pooled fallback instead of the flat JSONL summary.
+Dockerfile and the GitHub Actions daily workflow are in place, pending a
+`TIINGO_API_KEY` repo secret and a first successful scheduled run before the
+Claude Code Routine is retired.
 
 ## Why this exists
 
@@ -69,21 +72,28 @@ formed from the daily read, not a standalone signal.
 
 ## Build order, when the user says go
 
-1. Migrate `backtest_logs/regime_strategy_log.jsonl` to SQLite. Schema
-   roughly: `snapshots(run_at, interval, ticker, regime, direction,
-   strategy, trade_count, win_rate, avg_return_pct, total_return_pct,
-   compounded_return_pct)`. Ticker-level rows, not just pooled -- pooling
-   happens at query time, not storage time, so the symbol-specific override
-   is possible later without re-running history.
-2. Add a `Dockerfile` wrapping `smc_regime` so the job runs identically
-   anywhere.
-3. Stand up the daily job on whichever cloud the user picks (GitHub Actions
-   or Azure Container Apps Jobs), replacing the Claude Code Routine.
+1. **Done.** SQLite trade-level store: `smc_regime/db.py`, schema
+   `trades(run_at, interval, ticker, strategy, regime, direction, entry_date,
+   exit_date, return_pct, win)` -- one row per trade, not pre-pooled, so
+   pooling happens at query time -- plus `ticker_metadata(ticker, exchange,
+   sector, industry, last_updated)`. Sector resolution
+   (`smc_regime/metadata.py`) combines the scraped GICS sector files (S&P 500
+   coverage) with a hand-mapped `SECTOR_OVERRIDES` table for the 22
+   non-S&P names in the tracking universe (ETFs, ADRs, recent IPOs) --
+   all 132 tracked tickers resolve to a real sector, none fall through to
+   "Unknown". Exchange comes from Tiingo's `/tiingo/daily/{ticker}` metadata
+   endpoint, cached to `smc_regime/data/exchange_cache.json`.
+2. **Done.** `Dockerfile` wraps `smc_regime` + deps, entrypoint
+   `python -m smc_regime.daily_snapshot`.
+3. **In progress.** `.github/workflows/daily-snapshot.yml` runs the snapshot
+   weekdays at 21:00 UTC and commits `backtest_logs/` back to the repo.
+   Needs: `TIINGO_API_KEY` added as a repo secret, then a verified successful
+   scheduled (or manually dispatched) run before retiring the Claude Code
+   Routine (`trig_01S1Fvh2utK5MZhGVm7XvVcs`).
 4. Verify the TradingView Remix connection and what `my_charts` actually
    returns.
-5. Build the lookup: given a ticker (from chart or typed) + live regime
-   classification -> query SQLite -> recommend, with the pooled/symbol-
-   specific fallback logic.
+5. **Done.** `recommend_cli` queries SQLite via `db.best_strategy()` with the
+   symbol -> sector -> pooled fallback (min 15 trades per tier).
 6. Build the first Artifact dashboard from the SQLite data, daily-regime-
    first layout with hourly as supporting detail.
 

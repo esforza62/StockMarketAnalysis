@@ -24,7 +24,7 @@ jobs:
       - name: Run daily snapshot
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-        run: python -m smc_regime.daily_snapshot --intervals 1d,1h
+        run: python -m smc_regime.daily_snapshot --intervals 1d,1h --start-date 2019-01-01
 
       - name: Commit and push updated data
         run: |

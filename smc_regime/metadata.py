@@ -44,6 +44,7 @@ SECTOR_OVERRIDES = {
     "SHOP": "Information Technology",
     "SPCX": "Industrials",
     "TRI": "Industrials",
+    "BRK-B": "Financials",
 }
 
 

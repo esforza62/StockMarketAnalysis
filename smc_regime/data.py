@@ -38,11 +38,15 @@ def _period_to_start(period: str, end: pd.Timestamp) -> pd.Timestamp:
     return end - pd.DateOffset(years=n)
 
 
-def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
-    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for intraday)."""
+def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_date: str | None = None) -> pd.DataFrame:
+    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for intraday).
+
+    `start_date` (e.g. "2019-01-01"), when given, overrides `period` with a
+    fixed calendar anchor instead of a rolling lookback from today.
+    """
     token = _api_key()
     end = pd.Timestamp.now(tz="UTC").normalize()
-    start = _period_to_start(period, end)
+    start = pd.Timestamp(start_date, tz="UTC") if start_date else _period_to_start(period, end)
     date_params = {"startDate": start.strftime("%Y-%m-%d"), "endDate": end.strftime("%Y-%m-%d")}
 
     if interval == "1d":

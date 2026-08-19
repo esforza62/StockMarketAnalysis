@@ -52,6 +52,13 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     return conn
 
 
+def clear_trades(conn: sqlite3.Connection) -> None:
+    """Drop all trade rows -- use before a full rebuild (e.g. a new start
+    date or a changed tracking universe), not for routine daily snapshots."""
+    conn.execute("DELETE FROM trades")
+    conn.commit()
+
+
 def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: pd.DataFrame) -> None:
     """Replace any existing rows for this (run_at, interval) then insert
     fresh trade-level rows -- keeps re-running a snapshot idempotent."""

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 from . import indicators as ind
@@ -39,7 +40,13 @@ def compute_regime_features(df: pd.DataFrame, t: RegimeThresholds = RegimeThresh
     out["efficiency_ratio"] = ind.efficiency_ratio(close, t.er_window)
     out["adx"] = ind.adx(df, t.adx_window)
     out["atr_pct"] = ind.atr_pct(df, t.atr_window)
-    out["atr_pct_roc"] = out["atr_pct"].pct_change(t.atr_roc_window)
+    # Not out["atr_pct"].pct_change(): that divides by the raw shifted
+    # value with no zero guard, and atr_pct can legitimately be exactly
+    # 0.0 (a true range of 0 over the whole ATR window, e.g. a flat or
+    # gappy stretch) -- pandas' pct_change() then raises ZeroDivisionError
+    # instead of producing inf/nan. Guard the denominator explicitly.
+    atr_pct_prev = out["atr_pct"].shift(t.atr_roc_window)
+    out["atr_pct_roc"] = (out["atr_pct"] - atr_pct_prev) / atr_pct_prev.replace(0, np.nan)
     out["ema_extension_atr"] = ind.ema_extension_atr_units(df, t.ema_window, t.atr_window)
     out["curvature_r2_gain"] = ind.curvature_r2_gain(close, t.curvature_window)
     out["slope"] = ind.rolling_slope(close, t.er_window)

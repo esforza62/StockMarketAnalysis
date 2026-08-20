@@ -19,6 +19,8 @@ STRATEGY_NAMES = {
     "rsi_macd_reversal": "RSI+MACD Reversal",
     "rsi_macd_trend": "RSI+MACD Trend Continuation",
     "rsi_macd_filter": "RSI-Filtered MACD",
+    "rsi_dip_recovery": "RSI Dip & Recovery",
+    "rsi_dual_hma": "Dual RSI + Hull MA",
 }
 MIN_TRADES = 15
 REGIME_ORDER = {"choppy": 0, "trending": 1, "parabolic": 2}

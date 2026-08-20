@@ -17,7 +17,7 @@ from pathlib import Path
 from . import db as db_module
 from .regime_backtest import collect_trades, summarize_by_regime
 
-INTERVAL_PERIODS = {"1d": "2y", "1h": "730d"}
+INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y"}
 
 
 def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None) -> dict:

@@ -167,10 +167,13 @@ def best_strategy(
     regime: str,
     direction: str,
     ticker: str | None = None,
+    industry: str | None = None,
     sector: str | None = None,
     min_trades: int = 15,
 ) -> dict | None:
-    """Symbol-specific -> sector-level -> full-population pooled fallback.
+    """Symbol-specific -> industry-level -> sector-level -> full-population
+    pooled fallback. `industry` is the GICS Industry Group (25 buckets,
+    finer than the 11 GICS sectors) stored in ticker_metadata.industry.
 
     Returns the winning strategy's aggregate stats plus which tier
     (`source`) the answer came from, or None if even the pooled tier has
@@ -195,6 +198,11 @@ def best_strategy(
     tiers = []
     if ticker is not None:
         tiers.append(("symbol", base[base["ticker"] == ticker.upper()]))
+    if industry is not None:
+        industry_tickers = pd.read_sql_query(
+            "SELECT ticker FROM ticker_metadata WHERE industry = ?", conn, params=(industry,)
+        )["ticker"]
+        tiers.append(("industry", base[base["ticker"].isin(industry_tickers)]))
     if sector is not None:
         sector_tickers = pd.read_sql_query(
             "SELECT ticker FROM ticker_metadata WHERE sector = ?", conn, params=(sector,)

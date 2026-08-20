@@ -9,7 +9,7 @@ import argparse
 
 from . import db as db_module
 from .data import fetch_ohlcv
-from .metadata import get_sector
+from .metadata import get_industry, get_sector
 from .regime import classify_regime
 
 
@@ -30,9 +30,10 @@ def main() -> None:
 
     conn = db_module.connect(args.db_file)
     sector = get_sector(args.ticker)
+    industry = get_industry(args.ticker)
     best = db_module.best_strategy(
         conn, args.interval, regime, direction,
-        ticker=args.ticker, sector=sector, min_trades=args.min_trades,
+        ticker=args.ticker, industry=industry, sector=sector, min_trades=args.min_trades,
     )
     conn.close()
 
@@ -40,7 +41,12 @@ def main() -> None:
         print(f"No strategy has >= {args.min_trades} historical trades in this exact regime/direction bucket yet.")
         return
 
-    tier_label = {"symbol": f"{args.ticker.upper()}-specific", "sector": f"{sector} sector", "pooled": "full population"}[best["source"]]
+    tier_label = {
+        "symbol": f"{args.ticker.upper()}-specific",
+        "industry": f"{industry} industry group",
+        "sector": f"{sector} sector",
+        "pooled": "full population",
+    }[best["source"]]
     print(
         f"  -> best fit: {best['strategy']} "
         f"(avg {best['avg_return_pct']:.2f}%/trade, {best['win_rate']:.0f}% win rate, "

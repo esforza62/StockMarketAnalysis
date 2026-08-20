@@ -1,0 +1,168 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=5
+// SMC Multi-Timeframe Regime
+//
+// Companion to smc_regime_classifier.pine -- identical classification
+// rules, run independently on three FIXED timeframes (weekly, daily,
+// hourly) regardless of what timeframe the chart itself is on, via
+// request.security(). The value isn't any single timeframe's regime --
+// it's the alignment (or disagreement) between them.
+//
+// The pattern this script exists to surface: the higher timeframe is
+// trending one way, the middle timeframe has pulled back against it, and
+// the lowest timeframe is already turning back in the higher timeframe's
+// direction -- the pullback resuming. E.g. weekly up / daily down /
+// hourly up. Same underlying idea as this project's rsi_dip_recovery
+// strategy (buy the dip within an intact trend), one level up across
+// timeframes instead of within one.
+//
+// Note on repainting: like any multi-timeframe indicator, the higher
+// timeframes' CURRENT (still-forming) bar updates live until that bar
+// closes -- this is normal MTF behavior, not a bug. Closed historical
+// bars do not repaint.
+indicator("SMC Multi-Timeframe Regime", shorttitle = "SMC MTF Regime", overlay = true)
+
+// ---------------------------------------------------------------------
+// Inputs -- same defaults as smc_regime_classifier.pine.
+// ---------------------------------------------------------------------
+grpTrend = "Trend gate (Efficiency Ratio / ADX)"
+erWindow    = input.int(14, "ER window", group = grpTrend, minval = 2)
+erTrendMin  = input.float(0.30, "ER trend threshold", group = grpTrend, minval = 0.0, maxval = 1.0, step = 0.01)
+adxWindow   = input.int(14, "ADX window", group = grpTrend, minval = 2)
+adxTrendMin = input.float(20.0, "ADX trend threshold", group = grpTrend, minval = 0.0)
+
+grpPara = "Parabolic gate"
+atrWindow    = input.int(14, "ATR window", group = grpPara, minval = 2)
+atrRocWindow = input.int(5, "ATR% ROC window (bars)", group = grpPara, minval = 1)
+atrRocMin    = input.float(0.05, "ATR% ROC threshold (0.05 = +5%)", group = grpPara, step = 0.01)
+emaWindow    = input.int(20, "EMA window", group = grpPara, minval = 2)
+extMin       = input.float(3.0, "Extension threshold (ATR units)", group = grpPara, step = 0.1)
+
+grpDisp = "Display"
+tablePosIn     = input.string("Top Right", "Table position", group = grpDisp, options = ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"])
+tableSizeIn    = input.string("Small", "Table text size", group = grpDisp, options = ["Tiny", "Small", "Normal", "Large", "Huge", "Auto"])
+highlightSetup = input.bool(true, "Highlight pullback-resuming setups", group = grpDisp)
+
+f_tablePosition(p) =>
+    switch p
+        "Top Left"      => position.top_left
+        "Top Center"    => position.top_center
+        "Top Right"     => position.top_right
+        "Middle Left"   => position.middle_left
+        "Middle Center" => position.middle_center
+        "Middle Right"  => position.middle_right
+        "Bottom Left"   => position.bottom_left
+        "Bottom Center" => position.bottom_center
+        "Bottom Right"  => position.bottom_right
+        => position.top_right
+
+f_tableSize(s) =>
+    switch s
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        "Huge"   => size.huge
+        "Auto"   => size.auto
+        => size.small
+
+tablePosition = f_tablePosition(tablePosIn)
+tableSize     = f_tableSize(tableSizeIn)
+
+// ---------------------------------------------------------------------
+// Classification -- identical rules to smc_regime_classifier.pine,
+// packaged as a function so it can be evaluated per-timeframe via
+// request.security(). Returns [regime, direction].
+// ---------------------------------------------------------------------
+f_slope(src, len) =>
+    xSum = 0.0
+    ySum = 0.0
+    xySum = 0.0
+    xxSum = 0.0
+    for i = 0 to len - 1
+        x = float(i)
+        y = src[len - 1 - i]
+        xSum += x
+        ySum += y
+        xySum += x * y
+        xxSum += x * x
+    n = float(len)
+    denom = n * xxSum - xSum * xSum
+    denom != 0 ? (n * xySum - xSum * ySum) / denom : na
+
+f_classify() =>
+    trueRange = ta.tr(true)
+    atrVal    = ta.rma(trueRange, atrWindow)
+    atrPct    = atrVal / close * 100
+
+    [diPlus, diMinus, adxVal] = ta.dmi(adxWindow, adxWindow)
+
+    netChange       = math.abs(close - close[erWindow])
+    pathLength      = math.sum(math.abs(close - close[1]), erWindow)
+    efficiencyRatio = pathLength != 0 ? math.min(math.max(netChange / pathLength, 0.0), 1.0) : na
+
+    emaVal          = ta.ema(close, emaWindow)
+    emaExtensionAtr = atrVal != 0 ? (close - emaVal) / atrVal : na
+
+    atrPctPrev = atrPct[atrRocWindow]
+    atrPctRoc  = (not na(atrPctPrev) and atrPctPrev != 0) ? (atrPct - atrPctPrev) / atrPctPrev : na
+
+    slopeVal = f_slope(close, erWindow)
+
+    isTrending  = (efficiencyRatio >= erTrendMin) or (adxVal >= adxTrendMin)
+    isParabolic = isTrending and (math.abs(emaExtensionAtr) >= extMin) and (atrPctRoc >= atrRocMin)
+
+    regime    = isParabolic ? "parabolic" : isTrending ? "trending" : "choppy"
+    direction = regime == "choppy" ? "n/a" : (slopeVal > 0 ? "up" : slopeVal < 0 ? "down" : "flat")
+    [regime, direction]
+
+[wRegime, wDirection] = request.security(syminfo.tickerid, "W", f_classify())
+[dRegime, dDirection] = request.security(syminfo.tickerid, "D", f_classify())
+[hRegime, hDirection] = request.security(syminfo.tickerid, "60", f_classify())
+
+// ---------------------------------------------------------------------
+// Display -- colors match the Regime Desk dashboard's regime palette.
+// ---------------------------------------------------------------------
+colChoppy     = color.new(#97A7B6, 0)
+colTrending   = color.new(#5B9FE0, 0)
+colParabolic  = color.new(#E2933F, 0)
+colTableBg    = color.new(#0E1620, 15)
+colTableLabel = color.new(#8A9AAA, 0)
+colSetupUp    = color.new(#5CC98A, 0)
+colSetupDown  = color.new(#E2707A, 0)
+
+f_regimeColor(regime) =>
+    regime == "parabolic" ? colParabolic : regime == "trending" ? colTrending : colChoppy
+
+f_dirArrow(direction) =>
+    direction == "up" ? " ↑" : direction == "down" ? " ↓" : direction == "flat" ? " →" : ""
+
+// Pullback-resuming setup: the highest and lowest timeframes agree on
+// direction while the middle timeframe disagrees -- e.g. weekly up,
+// daily down (the pullback), hourly up again (the resumption). Flagged
+// in both directions for visibility, though the long-only bullish case
+// is the actionable one given this project's current strategy set.
+bullishSetup = wRegime == "trending" and wDirection == "up"   and dDirection == "down" and hRegime == "trending" and hDirection == "up"
+bearishSetup = wRegime == "trending" and wDirection == "down" and dDirection == "up"   and hRegime == "trending" and hDirection == "down"
+
+var table mtfTable = table.new(tablePosition, 2, 4, border_width = 1, bgcolor = colTableBg)
+if barstate.islast
+    table.cell(mtfTable, 0, 0, "Timeframe", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(mtfTable, 1, 0, "Regime", text_color = colTableLabel, text_halign = text.align_right, text_size = tableSize)
+    table.cell(mtfTable, 0, 1, "Weekly", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(mtfTable, 1, 1, str.upper(wRegime) + f_dirArrow(wDirection), text_color = f_regimeColor(wRegime), text_halign = text.align_right, text_size = tableSize)
+    table.cell(mtfTable, 0, 2, "Daily", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(mtfTable, 1, 2, str.upper(dRegime) + f_dirArrow(dDirection), text_color = f_regimeColor(dRegime), text_halign = text.align_right, text_size = tableSize)
+    table.cell(mtfTable, 0, 3, "Hourly", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(mtfTable, 1, 3, str.upper(hRegime) + f_dirArrow(hDirection), text_color = f_regimeColor(hRegime), text_halign = text.align_right, text_size = tableSize)
+
+bgcolor(highlightSetup and bullishSetup ? color.new(colSetupUp, 85) : highlightSetup and bearishSetup ? color.new(colSetupDown, 85) : na)
+
+if bullishSetup and not bullishSetup[1] and barstate.isconfirmed
+    alert("SMC MTF: " + syminfo.ticker + " -- weekly up / daily down / hourly up (pullback resuming)", alert.freq_once_per_bar_close)
+if bearishSetup and not bearishSetup[1] and barstate.isconfirmed
+    alert("SMC MTF: " + syminfo.ticker + " -- weekly down / daily up / hourly down (pullback resuming)", alert.freq_once_per_bar_close)
+
+alertcondition(bullishSetup, title = "Bullish MTF pullback-resuming setup", message = "{{ticker}} weekly up / daily down / hourly up")
+alertcondition(bearishSetup, title = "Bearish MTF pullback-resuming setup", message = "{{ticker}} weekly down / daily up / hourly down")

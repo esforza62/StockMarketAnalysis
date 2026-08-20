@@ -94,6 +94,7 @@ def export(db_path: str) -> dict:
         "min_trades": MIN_TRADES,
         "1d": _interval_payload(conn, "1d"),
         "1h": _interval_payload(conn, "1h"),
+        "1w": _interval_payload(conn, "1w"),
         "sectors": [
             {"sector": s, "count": c}
             for s, c in conn.execute(

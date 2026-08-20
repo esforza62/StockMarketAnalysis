@@ -30,6 +30,8 @@ _INTRADAY_FREQ = {
 # years) so they don't need it.
 _INTRADAY_CHUNK_DAYS = 700
 
+_WEEKLY_INTERVALS = {"1w", "1wk", "1week", "w"}
+
 
 def _api_key() -> str:
     key = os.environ.get("TIINGO_API_KEY")
@@ -88,12 +90,30 @@ def _fetch_chunk(ticker: str, interval: str, start: pd.Timestamp, end: pd.Timest
     return df[["Open", "High", "Low", "Close", "Volume"]].dropna()
 
 
+def _resample_weekly(df: pd.DataFrame) -> pd.DataFrame:
+    """Weekly bars from daily -- Tiingo's EOD endpoint has no native weekly
+    mode, and weekly volume is low enough (~1 bar/week) that resampling
+    already-fetched daily data locally is cheaper than a separate fetch
+    path anyway. Weeks are labeled by their last trading day (Friday),
+    not pandas' default week-ending-Sunday convention, to match how
+    weekly bars are normally read on a chart."""
+    weekly = df.resample("W-FRI").agg(
+        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    )
+    return weekly.dropna()
+
+
 def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_date: str | None = None) -> pd.DataFrame:
-    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for intraday).
+    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for
+    intraday, resampled from daily for weekly).
 
     `start_date` (e.g. "2019-01-01"), when given, overrides `period` with a
     fixed calendar anchor instead of a rolling lookback from today.
     """
+    if interval.lower() in _WEEKLY_INTERVALS:
+        daily = fetch_ohlcv(ticker, period=period, interval="1d", start_date=start_date)
+        return _resample_weekly(daily)
+
     token = _api_key()
     end = pd.Timestamp.now(tz="UTC").normalize()
     start = pd.Timestamp(start_date, tz="UTC") if start_date else _period_to_start(period, end)

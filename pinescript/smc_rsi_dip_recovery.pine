@@ -1,0 +1,140 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=5
+// SMC RSI Dip & Recovery
+//
+// Direct port of smc_regime.strategies.rsi_dip_recovery -- the strategy
+// that swept every regime bucket (choppy, trending up, trending down)
+// across all three tested timeframes (daily, weekly) in the backtest
+// harness this indicator's data comes from. No trend filter by design:
+// the Python backtest tags every trade with the regime active on entry
+// and lets that answer which regime the pattern actually works in,
+// rather than the strategy assuming it already knows.
+//
+// Entry: RSI dips into oversold (< dipThreshold) at some point in the
+// last dipLookback bars, then crosses back above confirmThreshold -- a
+// wider two-stage band than a plain single-threshold RSI cross.
+// Exit: RSI reaching overbought (>= exitRsi).
+//
+// Long side only, single position -- matches the backtest engine this
+// mirrors exactly, so what you see here is what actually got measured.
+indicator("SMC RSI Dip & Recovery", shorttitle = "SMC RSI Dip&Rec", overlay = true)
+
+// ---------------------------------------------------------------------
+// Inputs -- same defaults as smc_regime.strategies.rsi_dip_recovery.
+// ---------------------------------------------------------------------
+grpSignal = "Signal"
+rsiWindow       = input.int(14, "RSI window", group = grpSignal, minval = 2)
+dipThreshold    = input.float(35.0, "Dip threshold (oversold)", group = grpSignal, minval = 0.0, maxval = 100.0)
+confirmThreshold = input.float(45.0, "Confirm threshold (recovery cross)", group = grpSignal, minval = 0.0, maxval = 100.0)
+dipLookback     = input.int(10, "Dip lookback (bars)", group = grpSignal, minval = 1)
+exitRsi         = input.float(75.0, "Exit threshold (overbought)", group = grpSignal, minval = 0.0, maxval = 100.0)
+
+grpDisp = "Display"
+tablePosIn  = input.string("Top Right", "Table position", group = grpDisp, options = ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"])
+tableSizeIn = input.string("Small", "Table text size", group = grpDisp, options = ["Tiny", "Small", "Normal", "Large", "Huge", "Auto"])
+
+f_tablePosition(p) =>
+    switch p
+        "Top Left"      => position.top_left
+        "Top Center"    => position.top_center
+        "Top Right"     => position.top_right
+        "Middle Left"   => position.middle_left
+        "Middle Center" => position.middle_center
+        "Middle Right"  => position.middle_right
+        "Bottom Left"   => position.bottom_left
+        "Bottom Center" => position.bottom_center
+        "Bottom Right"  => position.bottom_right
+        => position.top_right
+
+f_tableSize(s) =>
+    switch s
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        "Huge"   => size.huge
+        "Auto"   => size.auto
+        => size.small
+
+tablePosition = f_tablePosition(tablePosIn)
+tableSize     = f_tableSize(tableSizeIn)
+
+// ---------------------------------------------------------------------
+// Signal -- mirrors rsi_dip_recovery() exactly. dippedRecently checks
+// the dipLookback bars ENDING at the previous bar (not including the
+// current bar), matching the Python version's
+// .rolling(dip_lookback, min_periods=1).max().shift(1).
+// ---------------------------------------------------------------------
+r = ta.rsi(close, rsiWindow)
+
+dipFlag = r < dipThreshold ? 1.0 : 0.0
+dippedRecently = ta.highest(dipFlag, dipLookback)[1] == 1
+confirmCross = (r > confirmThreshold) and (r[1] <= confirmThreshold)
+rawEntry = confirmCross and dippedRecently
+
+rawExit = (r >= exitRsi) and (r[1] < exitRsi)
+
+// ---------------------------------------------------------------------
+// Position state -- single position, long-only, matches the backtest
+// engine: a new entry only fires while flat, exit only while in a
+// position, so what fires here is exactly what would have been a trade
+// in the Python backtest.
+// ---------------------------------------------------------------------
+var bool inPosition = false
+var float entryPrice = na
+var int entryBarIndex = na
+
+doEnter = rawEntry and not inPosition
+doExit = rawExit and inPosition
+
+if doEnter
+    inPosition := true
+    entryPrice := close
+    entryBarIndex := bar_index
+
+if doExit
+    inPosition := false
+
+unrealizedPct = inPosition and not na(entryPrice) ? (close - entryPrice) / entryPrice * 100 : na
+barsInTrade = inPosition and not na(entryBarIndex) ? bar_index - entryBarIndex : na
+
+// ---------------------------------------------------------------------
+// Display -- colors match the Regime Desk dashboard / other Pine
+// scripts in this repo.
+// ---------------------------------------------------------------------
+colPos        = color.new(#5CC98A, 0)
+colNeg        = color.new(#E2707A, 0)
+colTableBg    = color.new(#0E1620, 15)
+colTableLabel = color.new(#8A9AAA, 0)
+colTableValue = color.new(#E7ECF1, 0)
+
+plotshape(doEnter, title = "Entry", style = shape.triangleup, location = location.belowbar, color = colPos, size = size.small)
+plotshape(doExit, title = "Exit", style = shape.triangledown, location = location.abovebar, color = colNeg, size = size.small)
+
+bgcolor(inPosition ? color.new(colPos, 92) : na)
+
+var table statsTable = table.new(tablePosition, 2, 5, border_width = 1, bgcolor = colTableBg)
+if barstate.islast
+    statusColor = inPosition ? colPos : colTableValue
+    table.cell(statsTable, 0, 0, "Status", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 0, inPosition ? "LONG" : "FLAT", text_color = statusColor, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 1, "RSI", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 1, str.tostring(r, "#.#"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 2, "Entry price", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 2, inPosition ? str.tostring(entryPrice, format.mintick) : "--", text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 3, "Unrealized", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 3, inPosition ? str.tostring(unrealizedPct, "#.##") + "%" : "--", text_color = inPosition ? (unrealizedPct >= 0 ? colPos : colNeg) : colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 4, "Bars in trade", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 4, inPosition ? str.tostring(barsInTrade) : "--", text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+
+// ---------------------------------------------------------------------
+// Alerts
+// ---------------------------------------------------------------------
+if doEnter and barstate.isconfirmed
+    alert("SMC RSI Dip&Rec: " + syminfo.ticker + " (" + timeframe.period + ") -> ENTRY at " + str.tostring(close, format.mintick), alert.freq_once_per_bar_close)
+if doExit and barstate.isconfirmed
+    alert("SMC RSI Dip&Rec: " + syminfo.ticker + " (" + timeframe.period + ") -> EXIT at " + str.tostring(close, format.mintick) + " (" + str.tostring(unrealizedPct, "#.##") + "%)", alert.freq_once_per_bar_close)
+
+alertcondition(doEnter, title = "Entry signal", message = "{{ticker}} RSI Dip & Recovery entry")
+alertcondition(doExit, title = "Exit signal", message = "{{ticker}} RSI Dip & Recovery exit")

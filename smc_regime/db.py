@@ -109,8 +109,15 @@ def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: p
     rows = trades.copy()
     rows["run_id"] = run_id
     rows["strategy_id"] = rows["strategy"].map(strategy_ids)
-    rows["entry_date"] = pd.to_datetime(rows["entry_date"], utc=True).astype("int64") // 10**9
-    rows["exit_date"] = pd.to_datetime(rows["exit_date"], utc=True).astype("int64") // 10**9
+    # Not .astype("int64") // 10**9: that assumes nanosecond-resolution
+    # datetime64, but pandas 2.0+ can produce other resolutions (observed:
+    # datetime64[us] from pandas 3.0.5 here), silently under-scaling the
+    # result by whatever factor separates the assumed and actual units --
+    # every stored date ended up near the 1970 epoch instead of the real
+    # trade date. Timedelta floor-division is resolution-agnostic.
+    _epoch = pd.Timestamp("1970-01-01", tz="UTC")
+    rows["entry_date"] = (pd.to_datetime(rows["entry_date"], utc=True) - _epoch) // pd.Timedelta(seconds=1)
+    rows["exit_date"] = (pd.to_datetime(rows["exit_date"], utc=True) - _epoch) // pd.Timedelta(seconds=1)
     rows["win"] = rows["win"].astype(int)
 
     cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win"]

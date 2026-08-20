@@ -18,6 +18,18 @@ _INTRADAY_FREQ = {
     "1h": "1hour", "1hour": "1hour",
 }
 
+# Tiingo's IEX intraday endpoint hard-caps responses at 10,000 rows and
+# silently returns the most recent 10,000 rather than erroring or paging
+# -- confirmed by testing directly (an explicit limit=50000 made no
+# difference). A 7.6-year hourly request is ~11,000+ bars, so a single
+# request for our full history silently drops everything before roughly
+# the most recent 5.7 years with no error to notice. Chunking each
+# intraday request to a window we've confirmed stays well under the cap
+# (a 2-year/730-day window was ~3,650 bars in earlier testing) avoids
+# this; daily requests never approach the cap (~1,900 bars over 7.6
+# years) so they don't need it.
+_INTRADAY_CHUNK_DAYS = 700
+
 
 def _api_key() -> str:
     key = os.environ.get("TIINGO_API_KEY")
@@ -38,15 +50,7 @@ def _period_to_start(period: str, end: pd.Timestamp) -> pd.Timestamp:
     return end - pd.DateOffset(years=n)
 
 
-def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_date: str | None = None) -> pd.DataFrame:
-    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for intraday).
-
-    `start_date` (e.g. "2019-01-01"), when given, overrides `period` with a
-    fixed calendar anchor instead of a rolling lookback from today.
-    """
-    token = _api_key()
-    end = pd.Timestamp.now(tz="UTC").normalize()
-    start = pd.Timestamp(start_date, tz="UTC") if start_date else _period_to_start(period, end)
+def _fetch_chunk(ticker: str, interval: str, start: pd.Timestamp, end: pd.Timestamp, token: str) -> pd.DataFrame:
     date_params = {"startDate": start.strftime("%Y-%m-%d"), "endDate": end.strftime("%Y-%m-%d")}
 
     if interval == "1d":
@@ -67,21 +71,44 @@ def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_dat
 
     response = requests.get(url, params=params, timeout=20)
     if response.status_code == 404:
-        raise ValueError(f"No data returned for {ticker!r} (period={period!r}, interval={interval!r})")
+        raise ValueError(f"No data returned for {ticker!r} (interval={interval!r})")
     response.raise_for_status()
     payload = response.json()
 
     if isinstance(payload, dict):
         raise ValueError(f"Tiingo error for {ticker!r}: {payload.get('detail', payload)}")
     if not payload:
-        raise ValueError(f"No data returned for {ticker!r} (period={period!r}, interval={interval!r})")
+        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
 
     df = pd.DataFrame(payload)
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date").rename(
         columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
     )
-    df = df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+    return df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+
+
+def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_date: str | None = None) -> pd.DataFrame:
+    """Fetch OHLCV history for a ticker from Tiingo (EOD for daily, IEX for intraday).
+
+    `start_date` (e.g. "2019-01-01"), when given, overrides `period` with a
+    fixed calendar anchor instead of a rolling lookback from today.
+    """
+    token = _api_key()
+    end = pd.Timestamp.now(tz="UTC").normalize()
+    start = pd.Timestamp(start_date, tz="UTC") if start_date else _period_to_start(period, end)
+
+    if interval == "1d" or (end - start).days <= _INTRADAY_CHUNK_DAYS:
+        df = _fetch_chunk(ticker, interval, start, end, token)
+    else:
+        chunks = []
+        chunk_start = start
+        while chunk_start < end:
+            chunk_end = min(chunk_start + pd.Timedelta(days=_INTRADAY_CHUNK_DAYS), end)
+            chunks.append(_fetch_chunk(ticker, interval, chunk_start, chunk_end, token))
+            chunk_start = chunk_end + pd.Timedelta(days=1)
+        df = pd.concat(chunks) if chunks else pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+        df = df[~df.index.duplicated(keep="first")].sort_index()
 
     if df.empty:
         raise ValueError(f"No data returned for {ticker!r} (period={period!r}, interval={interval!r})")

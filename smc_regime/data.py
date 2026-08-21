@@ -28,7 +28,20 @@ _INTRADAY_FREQ = {
 # (a 2-year/730-day window was ~3,650 bars in earlier testing) avoids
 # this; daily requests never approach the cap (~1,900 bars over 7.6
 # years) so they don't need it.
-_INTRADAY_CHUNK_DAYS = 700
+#
+# Chunk size has to shrink with bar density: 700 days of 15-minute bars
+# (~4x hourly's density) would land north of 14,000 bars and hit the same
+# cap it's meant to dodge. Each entry keeps roughly the same ~3,650-bar
+# safety margin that was empirically confirmed for hourly, scaled down by
+# how much denser that interval is.
+_INTRADAY_CHUNK_DAYS = {
+    "1min": 12, "1m": 12,
+    "5min": 60, "5m": 60,
+    "15min": 175, "15m": 175,
+    "30min": 350, "30m": 350,
+    "1hour": 700, "1h": 700,
+}
+_DEFAULT_INTRADAY_CHUNK_DAYS = 175
 
 _WEEKLY_INTERVALS = {"1w", "1wk", "1week", "w"}
 
@@ -117,14 +130,15 @@ def fetch_ohlcv(ticker: str, period: str = "1y", interval: str = "1d", start_dat
     token = _api_key()
     end = pd.Timestamp.now(tz="UTC").normalize()
     start = pd.Timestamp(start_date, tz="UTC") if start_date else _period_to_start(period, end)
+    chunk_days = _INTRADAY_CHUNK_DAYS.get(interval, _DEFAULT_INTRADAY_CHUNK_DAYS)
 
-    if interval == "1d" or (end - start).days <= _INTRADAY_CHUNK_DAYS:
+    if interval == "1d" or (end - start).days <= chunk_days:
         df = _fetch_chunk(ticker, interval, start, end, token)
     else:
         chunks = []
         chunk_start = start
         while chunk_start < end:
-            chunk_end = min(chunk_start + pd.Timedelta(days=_INTRADAY_CHUNK_DAYS), end)
+            chunk_end = min(chunk_start + pd.Timedelta(days=chunk_days), end)
             chunks.append(_fetch_chunk(ticker, interval, chunk_start, chunk_end, token))
             chunk_start = chunk_end + pd.Timedelta(days=1)
         df = pd.concat(chunks) if chunks else pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])

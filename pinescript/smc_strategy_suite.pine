@@ -1,0 +1,145 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=5
+// SMC Strategy Suite (Top 3)
+//
+// Direct port of the 3 best-performing strategies from smc_regime.strategies
+// -- rsi_dip_recovery, rsi (mean reversion), and rsi_macd_reversal, ranked
+// by mean avg-return-per-trade across non-thin regime buckets on daily,
+// hourly, and weekly data. A strategy() script, not an indicator(), so it
+// runs in TradingView's Strategy Tester and can be compared directly
+// against the Python backtest's numbers. Pick which one is active from the
+// dropdown below; only that one's entry/exit signals drive actual orders.
+//
+// Matched to the Python engine on purpose, not "realistic":
+//   - process_orders_on_close = true, so a signal firing on a bar fills at
+//     that same bar's close -- Python's Trade.return_pct uses entry/exit
+//     price = the close of the signal bar itself, with no next-bar delay.
+//   - commission and slippage default to 0 -- the Python engine models no
+//     fees or slippage. Dial them in yourself for a more realistic number;
+//     leave them at 0 for a true apples-to-apples comparison.
+//   - 100% of equity per trade, no pyramiding (Pine's default) -- matches
+//     the Python engine's single-position, fully-compounding-per-ticker
+//     behavior.
+//   - Long only, single position -- this system does not trade the short
+//     side, by design, on either side of the port.
+strategy(
+     "SMC Strategy Suite (Top 3)", shorttitle = "SMC Top3", overlay = true,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     commission_type = strategy.commission.percent, commission_value = 0.0,
+     slippage = 0, process_orders_on_close = true, pyramiding = 0)
+
+// ---------------------------------------------------------------------
+// Strategy selector
+// ---------------------------------------------------------------------
+selected = input.string(
+     "rsi_dip_recovery", "Strategy", group = "Strategy",
+     options = ["rsi_dip_recovery", "rsi", "rsi_macd_reversal"])
+
+// ---------------------------------------------------------------------
+// 1. rsi_dip_recovery -- RSI Dip & Recovery
+// (the strategy that swept every regime bucket -- see
+// smc_rsi_dip_recovery.pine for the standalone indicator version)
+// ---------------------------------------------------------------------
+dipRsiWindow  = input.int(14, "RSI window", group = "1. RSI Dip & Recovery", minval = 2)
+dipThreshold  = input.float(35.0, "Dip threshold", group = "1. RSI Dip & Recovery")
+dipConfirm    = input.float(45.0, "Confirm threshold", group = "1. RSI Dip & Recovery")
+dipLookback   = input.int(10, "Dip lookback (bars)", group = "1. RSI Dip & Recovery", minval = 1)
+dipExitRsi    = input.float(75.0, "Exit threshold", group = "1. RSI Dip & Recovery")
+dipRsi = ta.rsi(close, dipRsiWindow)
+dipFlag = dipRsi < dipThreshold ? 1.0 : 0.0
+dippedRecently = ta.highest(dipFlag, dipLookback)[1] == 1
+dipConfirmCross = dipRsi > dipConfirm and dipRsi[1] <= dipConfirm
+entryDipRecovery = dipConfirmCross and dippedRecently
+exitDipRecovery  = dipRsi >= dipExitRsi and dipRsi[1] < dipExitRsi
+
+// ---------------------------------------------------------------------
+// 2. rsi -- RSI Mean Reversion
+// ---------------------------------------------------------------------
+rsiWindow     = input.int(14, "RSI window", group = "2. RSI Mean Reversion", minval = 2)
+rsiOversold   = input.float(30.0, "Oversold", group = "2. RSI Mean Reversion")
+rsiOverbought = input.float(70.0, "Overbought", group = "2. RSI Mean Reversion")
+rsiVal        = ta.rsi(close, rsiWindow)
+entryRsi      = ta.crossover(rsiVal, rsiOversold)
+exitRsi       = ta.crossover(rsiVal, rsiOverbought)
+
+// ---------------------------------------------------------------------
+// 3. rsi_macd_reversal -- Oversold RSI + bullish MACD cross
+// ---------------------------------------------------------------------
+revRsiWindow = input.int(14, "RSI window", group = "3. RSI+MACD Reversal", minval = 2)
+revOversold  = input.float(30.0, "Oversold", group = "3. RSI+MACD Reversal")
+revFast      = input.int(12, "MACD fast", group = "3. RSI+MACD Reversal", minval = 1)
+revSlow      = input.int(26, "MACD slow", group = "3. RSI+MACD Reversal", minval = 2)
+revSignal    = input.int(9, "MACD signal", group = "3. RSI+MACD Reversal", minval = 1)
+revRsi = ta.rsi(close, revRsiWindow)
+[revMacdLine, revSigLine, revHist] = ta.macd(close, revFast, revSlow, revSignal)
+revBullCross = ta.crossover(revMacdLine, revSigLine)
+revBearCross = ta.crossunder(revMacdLine, revSigLine)
+entryRevRsiMacd = revBullCross and revRsi < revOversold
+exitRevRsiMacd  = revBearCross
+
+// ---------------------------------------------------------------------
+// Dispatch -- only the selected strategy's signals drive real orders
+// ---------------------------------------------------------------------
+[activeEntry, activeExit] = switch selected
+    "rsi_dip_recovery"  => [entryDipRecovery, exitDipRecovery]
+    "rsi"               => [entryRsi, exitRsi]
+    "rsi_macd_reversal" => [entryRevRsiMacd, exitRevRsiMacd]
+    => [false, false]
+
+if activeEntry
+    strategy.entry("Long", strategy.long)
+if activeExit
+    strategy.close("Long")
+
+// ---------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------
+grpDisp = "Display"
+tablePosIn  = input.string("Top Right", "Table position", group = grpDisp, options = ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"])
+tableSizeIn = input.string("Small", "Table text size", group = grpDisp, options = ["Tiny", "Small", "Normal", "Large", "Huge", "Auto"])
+
+f_tablePosition(p) =>
+    switch p
+        "Top Left"      => position.top_left
+        "Top Center"    => position.top_center
+        "Top Right"     => position.top_right
+        "Middle Left"   => position.middle_left
+        "Middle Center" => position.middle_center
+        "Middle Right"  => position.middle_right
+        "Bottom Left"   => position.bottom_left
+        "Bottom Center" => position.bottom_center
+        "Bottom Right"  => position.bottom_right
+        => position.top_right
+
+f_tableSize(s) =>
+    switch s
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        "Huge"   => size.huge
+        "Auto"   => size.auto
+        => size.small
+
+tablePosition = f_tablePosition(tablePosIn)
+tableSize     = f_tableSize(tableSizeIn)
+
+colPos        = color.new(#5CC98A, 0)
+colNeg        = color.new(#E2707A, 0)
+colTableBg    = color.new(#0E1620, 15)
+colTableLabel = color.new(#8A9AAA, 0)
+colTableValue = color.new(#E7ECF1, 0)
+
+plotshape(activeEntry, title = "Entry", style = shape.triangleup, location = location.belowbar, color = colPos, size = size.small)
+plotshape(activeExit, title = "Exit", style = shape.triangledown, location = location.abovebar, color = colNeg, size = size.small)
+
+var table statsTable = table.new(tablePosition, 2, 3, border_width = 1, bgcolor = colTableBg)
+if barstate.islast
+    inPos = strategy.position_size > 0
+    table.cell(statsTable, 0, 0, "Strategy", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 0, selected, text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 1, "Position", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 1, inPos ? "LONG" : "FLAT", text_color = inPos ? colPos : colTableValue, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 0, 2, "Net profit", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
+    table.cell(statsTable, 1, 2, str.tostring(strategy.netprofit / strategy.initial_capital * 100, "#.##") + "%", text_color = strategy.netprofit >= 0 ? colPos : colNeg, text_halign = text.align_right, text_size = tableSize)

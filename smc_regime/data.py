@@ -97,9 +97,24 @@ def _fetch_chunk(ticker: str, interval: str, start: pd.Timestamp, end: pd.Timest
 
     df = pd.DataFrame(payload)
     df["date"] = pd.to_datetime(df["date"])
-    df = df.set_index("date").rename(
-        columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"}
-    )
+    df = df.set_index("date")
+
+    if interval == "1d":
+        # adjOpen/High/Low/Close/Volume, not the raw fields: Tiingo's raw
+        # close carries the full nominal price change on every stock split
+        # (e.g. NVDA's 2024-06-10 10:1 split shows as a ~-90% one-day
+        # "crash" in raw data), which corrupts both regime classification
+        # around that date and the return of any trade whose window
+        # straddles it -- confirmed on real stored trades for NVDA and
+        # AAPL. The IEX intraday endpoint used below has no adjusted
+        # equivalent, so hourly/15m data can still carry this exposure for
+        # a split that falls within their (much shorter) rolling windows.
+        df = df.rename(
+            columns={"adjOpen": "Open", "adjHigh": "High", "adjLow": "Low", "adjClose": "Close", "adjVolume": "Volume"}
+        )
+    else:
+        df = df.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"})
+
     return df[["Open", "High", "Low", "Close", "Volume"]].dropna()
 
 

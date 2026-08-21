@@ -17,7 +17,14 @@ from pathlib import Path
 from . import db as db_module
 from .regime_backtest import collect_trades, summarize_by_regime
 
-INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y"}
+# 15m's rolling window is intentionally short relative to 1d/1h/1w's full
+# 2019-anchored history: 15-minute bars run ~4x hourly's density, so
+# matching hourly's depth would multiply trade count/DB size/rebuild time
+# by roughly that much and risk the 6-hour GitHub Actions job timeout on
+# a full rebuild. 2 years keeps it in the same ballpark hourly already
+# handles comfortably -- see --rolling-intervals below for how this stays
+# a rolling window even when --start-date anchors the other intervals.
+INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y", "15m": "730d"}
 
 
 def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None) -> dict:
@@ -54,7 +61,14 @@ def main() -> None:
     parser.add_argument("--db-file", default=str(db_module.DEFAULT_DB_PATH), help="SQLite file to write trade-level rows to")
     parser.add_argument("--skip-metadata", action="store_true", help="skip refreshing ticker exchange/sector metadata")
     parser.add_argument("--start-date", default=None, help="fixed calendar anchor (e.g. 2019-01-01) instead of the default rolling lookback -- use for a full rebuild")
+    parser.add_argument(
+        "--rolling-intervals", default=None,
+        help="comma-separated intervals that stay on their INTERVAL_PERIODS rolling window even when --start-date "
+             "is set for the rest (e.g. 15m, to keep it on a short window while 1d/1h/1w do a full historical rebuild)",
+    )
     args = parser.parse_args()
+
+    rolling_intervals = {i.strip() for i in args.rolling_intervals.split(",") if i.strip()} if args.rolling_intervals else set()
 
     tickers = [line.strip() for line in Path(args.tickers_file).read_text().splitlines() if line.strip()]
     intervals = [i.strip() for i in args.intervals.split(",") if i.strip()]
@@ -73,7 +87,8 @@ def main() -> None:
 
     with log_path.open("a") as f:
         for interval in intervals:
-            record = run_snapshot(tickers, interval, conn=conn, start_date=args.start_date)
+            start_date = None if interval in rolling_intervals else args.start_date
+            record = run_snapshot(tickers, interval, conn=conn, start_date=start_date)
             f.write(json.dumps(record) + "\n")
             print(f"{interval}: {record['total_trades']} trades across {record['tickers_with_trades']}/{record['ticker_count']} tickers")
 

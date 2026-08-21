@@ -24,7 +24,7 @@ jobs:
       - name: Run daily snapshot
         env:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-        run: python -m smc_regime.daily_snapshot --intervals 1d,1h,1w --start-date 2019-01-01
+        run: python -m smc_regime.daily_snapshot --intervals 1d,1h,1w,15m --start-date 2019-01-01 --rolling-intervals 15m
 
       # backtest_logs/smc_regime.db is rewritten in full every run and
       # doesn't diff well as a git blob -- committing it directly would

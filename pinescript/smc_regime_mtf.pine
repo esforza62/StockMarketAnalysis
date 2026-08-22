@@ -21,6 +21,12 @@
 // timeframes' CURRENT (still-forming) bar updates live until that bar
 // closes -- this is normal MTF behavior, not a bug. Closed historical
 // bars do not repaint.
+//
+// Each timeframe's regime/direction is confirmed_regime()-confirmed
+// (matching smc_regime.regime.confirmed_regime()) on that timeframe's OWN
+// bars before being reported -- e.g. the weekly column only changes once
+// the new regime has held for `confirmBars` consecutive WEEKLY bars, not
+// just any single noisy one.
 indicator("SMC Multi-Timeframe Regime", shorttitle = "SMC MTF Regime", overlay = true)
 
 // ---------------------------------------------------------------------
@@ -38,6 +44,9 @@ atrRocWindow = input.int(5, "ATR% ROC window (bars)", group = grpPara, minval = 
 atrRocMin    = input.float(0.05, "ATR% ROC threshold (0.05 = +5%)", group = grpPara, step = 0.01)
 emaWindow    = input.int(20, "EMA window", group = grpPara, minval = 2)
 extMin       = input.float(3.0, "Extension threshold (ATR units)", group = grpPara, step = 0.1)
+
+grpConfirm = "Confirmation"
+confirmBars = input.int(3, "Confirm bars", group = grpConfirm, minval = 1, tooltip = "Each timeframe's regime/direction only updates once the new value has held for this many consecutive bars of THAT timeframe (e.g. 3 consecutive weekly bars for the weekly column) -- damps single-bar noise. Set to 1 to disable and use the raw per-bar regime.")
 
 grpDisp = "Display"
 tablePosIn     = input.string("Top Right", "Table position", group = grpDisp, options = ["Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right"])
@@ -91,7 +100,16 @@ f_slope(src, len) =>
     denom = n * xxSum - xSum * xSum
     denom != 0 ? (n * xySum - xSum * ySum) / denom : na
 
-f_classify() =>
+// Confirmation is computed INSIDE this function (evaluated once per call,
+// independently, within each request.security() call's own native bar
+// sequence -- e.g. the weekly call's [1] history-reference means "previous
+// weekly bar", not "previous chart bar"). Uses a self-referencing series
+// (x[1]) rather than `var` state: `var` inside a function shared across
+// multiple request.security() calls is an easy way to accidentally leak
+// state between timeframes, while x[1]-style self-reference is ordinary,
+// unambiguous per-context series computation -- same technique already
+// relied on for close[erWindow] etc. in the raw classification above.
+f_classify(confirmBars) =>
     trueRange = ta.tr(true)
     atrVal    = ta.rma(trueRange, atrWindow)
     atrPct    = atrVal / close * 100
@@ -115,11 +133,17 @@ f_classify() =>
 
     regime    = isParabolic ? "parabolic" : isTrending ? "trending" : "choppy"
     direction = regime == "choppy" ? "n/a" : (slopeVal > 0 ? "up" : slopeVal < 0 ? "down" : "flat")
-    [regime, direction]
 
-[wRegime, wDirection] = request.security(syminfo.tickerid, "W", f_classify())
-[dRegime, dDirection] = request.security(syminfo.tickerid, "D", f_classify())
-[hRegime, hDirection] = request.security(syminfo.tickerid, "60", f_classify())
+    rawKey        = regime + "|" + direction
+    confirmStreak = rawKey == rawKey[1] ? nz(confirmStreak[1], 0) + 1 : 1
+    confirmedKey  = bar_index == 0 ? rawKey : (confirmStreak >= confirmBars and rawKey != confirmedKey[1] ? rawKey : confirmedKey[1])
+
+    confirmedParts = str.split(confirmedKey, "|")
+    [array.get(confirmedParts, 0), array.get(confirmedParts, 1)]
+
+[wRegime, wDirection] = request.security(syminfo.tickerid, "W", f_classify(confirmBars))
+[dRegime, dDirection] = request.security(syminfo.tickerid, "D", f_classify(confirmBars))
+[hRegime, hDirection] = request.security(syminfo.tickerid, "60", f_classify(confirmBars))
 
 // ---------------------------------------------------------------------
 // Display -- colors match the Regime Desk dashboard's regime palette.

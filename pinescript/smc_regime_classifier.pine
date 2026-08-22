@@ -18,6 +18,13 @@
 // price over the same window as the Efficiency Ratio; choppy bars have no
 // direction ("n/a"), matching the Python output.
 //
+// The regime/direction actually displayed and alerted on is confirmed_regime()
+// -confirmed, not the raw per-bar classification: a new pair only takes
+// effect once it's held for `confirmBars` consecutive raw bars (default 3),
+// damping single-bar noise. Matches smc_regime.regime.confirmed_regime(),
+// used the same way for the live "what regime is this ticker in right now"
+// lookup on the Python side.
+//
 // Intentionally NOT ported: curvature_r2_gain. In regime.py it's computed
 // as a diagnostic column but is explicitly excluded from the parabolic
 // gate (see the comment on RegimeThresholds.curvature_window) -- at
@@ -43,6 +50,9 @@ atrRocWindow = input.int(5, "ATR% ROC window (bars)", group = grpPara, minval = 
 atrRocMin    = input.float(0.05, "ATR% ROC threshold (0.05 = +5%)", group = grpPara, step = 0.01)
 emaWindow    = input.int(20, "EMA window", group = grpPara, minval = 2)
 extMin       = input.float(3.0, "Extension threshold (ATR units)", group = grpPara, step = 0.1)
+
+grpConfirm = "Confirmation"
+confirmBars = input.int(3, "Confirm bars", group = grpConfirm, minval = 1, tooltip = "Regime/direction only updates once the new value has held for this many consecutive raw bars -- damps single-bar noise on the displayed/alerted regime. Set to 1 to disable and use the raw per-bar regime.")
 
 grpDisp = "Display"
 showBg      = input.bool(true, "Shade background by regime", group = grpDisp)
@@ -151,7 +161,35 @@ regime    = isParabolic ? "parabolic" : isTrending ? "trending" : "choppy"
 direction = regime == "choppy" ? "n/a" : (slopeVal > 0 ? "up" : slopeVal < 0 ? "down" : "flat")
 
 // ---------------------------------------------------------------------
+// Confirmation -- hysteresis filter matching smc_regime.regime.
+// confirmed_regime(): a new (regime, direction) pair only takes effect
+// once it's held for confirmBars consecutive raw bars; until then the
+// previously confirmed pair carries forward. classify_regime()
+// re-evaluates from scratch every bar with no persistence requirement,
+// which would otherwise let a live display/alert latch onto a single
+// noisy bar -- the Python side applies the same filter both to its live
+// recommend_cli lookup and to how historical trades get tagged.
+// ---------------------------------------------------------------------
+rawKey     = regime + "|" + direction
+rawKeyPrev = regime[1] + "|" + direction[1]
+
+var string confirmedKey = na
+var int confirmStreak = 1
+
+if bar_index == 0
+    confirmedKey := rawKey
+else
+    confirmStreak := rawKey == rawKeyPrev ? confirmStreak + 1 : 1
+    if confirmStreak >= confirmBars and rawKey != confirmedKey
+        confirmedKey := rawKey
+
+confirmedParts    = str.split(confirmedKey, "|")
+confirmedRegime   = array.get(confirmedParts, 0)
+confirmedDirection = array.get(confirmedParts, 1)
+
+// ---------------------------------------------------------------------
 // Display -- colors match the Regime Desk dashboard's regime palette.
+// Uses the confirmed regime/direction, not the raw per-bar values.
 // ---------------------------------------------------------------------
 colChoppy    = color.new(#97A7B6, 0)
 colTrending  = color.new(#5B9FE0, 0)
@@ -160,19 +198,19 @@ colTableBg    = color.new(#0E1620, 15)
 colTableLabel = color.new(#8A9AAA, 0)
 colTableValue = color.new(#E7ECF1, 0)
 
-curColor = regime == "parabolic" ? colParabolic : regime == "trending" ? colTrending : colChoppy
-dirSuffix = direction == "up" ? " (up)" : direction == "down" ? " (down)" : direction == "flat" ? " (flat)" : ""
-dirArrow = direction == "up" ? " ↑" : direction == "down" ? " ↓" : direction == "flat" ? " →" : ""
+curColor = confirmedRegime == "parabolic" ? colParabolic : confirmedRegime == "trending" ? colTrending : colChoppy
+dirSuffix = confirmedDirection == "up" ? " (up)" : confirmedDirection == "down" ? " (down)" : confirmedDirection == "flat" ? " (flat)" : ""
+dirArrow = confirmedDirection == "up" ? " ↑" : confirmedDirection == "down" ? " ↓" : confirmedDirection == "flat" ? " →" : ""
 
 bgcolor(showBg ? color.new(curColor, bgOpacity) : na)
 
-regimeChanged = bar_index > 0 and (regime != regime[1] or direction != direction[1])
+regimeChanged = bar_index > 0 and (confirmedRegime != confirmedRegime[1] or confirmedDirection != confirmedDirection[1])
 plotchar(showMarks and regimeChanged ? low : na, "Regime/direction change", "•", location.belowbar, color = curColor, size = size.tiny)
 
 var table statsTable = table.new(tablePosition, 2, 7, border_width = 1, bgcolor = colTableBg)
 if showTable and barstate.islast
     table.cell(statsTable, 0, 0, "Regime", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
-    table.cell(statsTable, 1, 0, str.upper(regime) + dirArrow, text_color = curColor, text_halign = text.align_right, text_size = tableSize)
+    table.cell(statsTable, 1, 0, str.upper(confirmedRegime) + dirArrow, text_color = curColor, text_halign = text.align_right, text_size = tableSize)
     table.cell(statsTable, 0, 1, "ER", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
     table.cell(statsTable, 1, 1, na(efficiencyRatio) ? "n/a" : str.tostring(efficiencyRatio, "#.###"), text_color = colTableValue, text_halign = text.align_right, text_size = tableSize)
     table.cell(statsTable, 0, 2, "ADX", text_color = colTableLabel, text_halign = text.align_left, text_size = tableSize)
@@ -190,8 +228,8 @@ if showTable and barstate.islast
 // Alerts
 // ---------------------------------------------------------------------
 if regimeChanged and barstate.isconfirmed
-    alert("SMC Regime: " + syminfo.ticker + " (" + timeframe.period + ") -> " + str.upper(regime) + dirSuffix, alert.freq_once_per_bar_close)
+    alert("SMC Regime: " + syminfo.ticker + " (" + timeframe.period + ") -> " + str.upper(confirmedRegime) + dirSuffix, alert.freq_once_per_bar_close)
 
-alertcondition(regime == "parabolic" and direction == "up",   title = "Parabolic up",   message = "{{ticker}} turned parabolic (up) on {{interval}}")
-alertcondition(regime == "parabolic" and direction == "down", title = "Parabolic down", message = "{{ticker}} turned parabolic (down) on {{interval}}")
+alertcondition(confirmedRegime == "parabolic" and confirmedDirection == "up",   title = "Parabolic up",   message = "{{ticker}} turned parabolic (up) on {{interval}}")
+alertcondition(confirmedRegime == "parabolic" and confirmedDirection == "down", title = "Parabolic down", message = "{{ticker}} turned parabolic (down) on {{interval}}")
 alertcondition(regimeChanged, title = "Regime or direction changed", message = "{{ticker}} SMC regime changed on {{interval}}")

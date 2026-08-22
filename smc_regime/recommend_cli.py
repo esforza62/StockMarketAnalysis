@@ -10,7 +10,7 @@ import argparse
 from . import db as db_module
 from .data import fetch_ohlcv
 from .metadata import get_industry, get_sector
-from .regime import classify_regime
+from .regime import classify_regime, confirmed_regime
 
 
 def main() -> None:
@@ -20,13 +20,19 @@ def main() -> None:
     parser.add_argument("--interval", default="1d", help="bar interval, e.g. 1d, 1h")
     parser.add_argument("--db-file", default=str(db_module.DEFAULT_DB_PATH), help="path to the SQLite snapshot store")
     parser.add_argument("--min-trades", type=int, default=15, help="minimum historical trades to trust a tier's strategy match")
+    parser.add_argument(
+        "--confirm-bars", type=int, default=3,
+        help="require the regime to hold for this many consecutive bars before trusting it for the live lookup "
+             "(--confirm-bars 1 disables confirmation, using the raw last-bar regime)",
+    )
     args = parser.parse_args()
 
     df = fetch_ohlcv(args.ticker, period=args.period, interval=args.interval)
-    latest = classify_regime(df).iloc[-1]
+    regime_df = confirmed_regime(classify_regime(df), confirm_bars=args.confirm_bars)
+    latest = regime_df.iloc[-1]
     regime, direction = latest["regime"], latest["direction"]
 
-    print(f"{args.ticker.upper()}: currently '{regime}' ({direction})")
+    print(f"{args.ticker.upper()}: currently '{regime}' ({direction}) [confirmed over {args.confirm_bars} bars]")
 
     conn = db_module.connect(args.db_file)
     sector = get_sector(args.ticker)

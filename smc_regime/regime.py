@@ -93,3 +93,37 @@ def classify_regime(df: pd.DataFrame, t: RegimeThresholds = RegimeThresholds()) 
     result["regime"] = regime
     result["direction"] = direction
     return result
+
+
+def confirmed_regime(regime_df: pd.DataFrame, confirm_bars: int = 3) -> pd.DataFrame:
+    """Hysteresis filter on classify_regime()'s per-bar output: a new
+    (regime, direction) pair only takes effect once it's held for
+    `confirm_bars` consecutive raw bars; until then, the previously
+    confirmed pair carries forward.
+
+    classify_regime() re-evaluates from scratch on every single bar with no
+    persistence requirement -- fine for backtest trade-tagging (a trade's
+    regime tag is a measurement of what was true at that instant, not a
+    claim that the regime was "settled"), but a live "what regime is this
+    ticker in right now" check can otherwise latch onto a single noisy bar,
+    especially on lower timeframes where regime changes far more often per
+    calendar day (confirmed empirically: ~20x more often on 15m than on
+    daily, in bars-per-day terms the underlying classifier is actually
+    scale-invariant -- see the walk-through in conversation). This does NOT
+    change how historical trades are tagged for backtesting; it's for the
+    live "which strategy should I be watching" lookup specifically.
+    """
+    raw_key = regime_df["regime"] + "|" + regime_df["direction"]
+    confirmed_key = raw_key.copy()
+
+    current = raw_key.iloc[0]
+    streak = 1
+    for i in range(1, len(raw_key)):
+        streak = streak + 1 if raw_key.iloc[i] == raw_key.iloc[i - 1] else 1
+        if streak >= confirm_bars and raw_key.iloc[i] != current:
+            current = raw_key.iloc[i]
+        confirmed_key.iloc[i] = current
+
+    result = regime_df.copy()
+    result[["regime", "direction"]] = confirmed_key.str.split("|", expand=True).to_numpy()
+    return result

@@ -81,8 +81,9 @@ tableSize     = f_tableSize(tableSizeIn)
 
 // ---------------------------------------------------------------------
 // Classification -- identical rules to smc_regime_classifier.pine,
-// packaged as a function so it can be evaluated per-timeframe via
-// request.security(). Returns [regime, direction].
+// packaged as functions so they can be evaluated per-timeframe via
+// request.security(). See f_classifyRaw() and the f_classifyConfirmed*()
+// functions below for why there are several of them, not just one.
 // ---------------------------------------------------------------------
 f_slope(src, len) =>
     xSum = 0.0
@@ -100,16 +101,9 @@ f_slope(src, len) =>
     denom = n * xxSum - xSum * xSum
     denom != 0 ? (n * xySum - xSum * ySum) / denom : na
 
-// Confirmation is computed INSIDE this function (evaluated once per call,
-// independently, within each request.security() call's own native bar
-// sequence -- e.g. the weekly call's [1] history-reference means "previous
-// weekly bar", not "previous chart bar"). Uses a self-referencing series
-// (x[1]) rather than `var` state: `var` inside a function shared across
-// multiple request.security() calls is an easy way to accidentally leak
-// state between timeframes, while x[1]-style self-reference is ordinary,
-// unambiguous per-context series computation -- same technique already
-// relied on for close[erWindow] etc. in the raw classification above.
-f_classify(confirmBars) =>
+// Raw classification -- shared, stateless, safe to call from all three
+// request.security() invocations below.
+f_classifyRaw() =>
     trueRange = ta.tr(true)
     atrVal    = ta.rma(trueRange, atrWindow)
     atrPct    = atrVal / close * 100
@@ -133,17 +127,65 @@ f_classify(confirmBars) =>
 
     regime    = isParabolic ? "parabolic" : isTrending ? "trending" : "choppy"
     direction = regime == "choppy" ? "n/a" : (slopeVal > 0 ? "up" : slopeVal < 0 ? "down" : "flat")
+    [regime, direction]
 
-    rawKey        = regime + "|" + direction
-    confirmStreak = rawKey == rawKey[1] ? nz(confirmStreak[1], 0) + 1 : 1
-    confirmedKey  = bar_index == 0 ? rawKey : (confirmStreak >= confirmBars and rawKey != confirmedKey[1] ? rawKey : confirmedKey[1])
+// Confirmation must run per-timeframe, on that timeframe's OWN bar
+// sequence (a weekly confirmation needs 3 consecutive WEEKLY bars, not 3
+// chart bars) -- so it has to be evaluated inside each request.security()
+// call, not on the resampled series back on the chart. Deliberately three
+// separate, uniquely-named functions (not one shared function with `var`
+// state called three times): each request.security() call gets its own
+// unambiguous var state this way, with no reliance on how Pine happens to
+// scope `var` when a single function is invoked from multiple
+// request.security() call sites.
+f_classifyConfirmedW(confirmBars) =>
+    [regime, direction] = f_classifyRaw()
+    rawKey     = regime + "|" + direction
+    rawKeyPrev = regime[1] + "|" + direction[1]
+    var string confirmedKey = na
+    var int confirmStreak = 1
+    if bar_index == 0
+        confirmedKey := rawKey
+    else
+        confirmStreak := rawKey == rawKeyPrev ? confirmStreak + 1 : 1
+        if confirmStreak >= confirmBars and rawKey != confirmedKey
+            confirmedKey := rawKey
+    parts = str.split(confirmedKey, "|")
+    [array.get(parts, 0), array.get(parts, 1)]
 
-    confirmedParts = str.split(confirmedKey, "|")
-    [array.get(confirmedParts, 0), array.get(confirmedParts, 1)]
+f_classifyConfirmedD(confirmBars) =>
+    [regime, direction] = f_classifyRaw()
+    rawKey     = regime + "|" + direction
+    rawKeyPrev = regime[1] + "|" + direction[1]
+    var string confirmedKey = na
+    var int confirmStreak = 1
+    if bar_index == 0
+        confirmedKey := rawKey
+    else
+        confirmStreak := rawKey == rawKeyPrev ? confirmStreak + 1 : 1
+        if confirmStreak >= confirmBars and rawKey != confirmedKey
+            confirmedKey := rawKey
+    parts = str.split(confirmedKey, "|")
+    [array.get(parts, 0), array.get(parts, 1)]
 
-[wRegime, wDirection] = request.security(syminfo.tickerid, "W", f_classify(confirmBars))
-[dRegime, dDirection] = request.security(syminfo.tickerid, "D", f_classify(confirmBars))
-[hRegime, hDirection] = request.security(syminfo.tickerid, "60", f_classify(confirmBars))
+f_classifyConfirmedH(confirmBars) =>
+    [regime, direction] = f_classifyRaw()
+    rawKey     = regime + "|" + direction
+    rawKeyPrev = regime[1] + "|" + direction[1]
+    var string confirmedKey = na
+    var int confirmStreak = 1
+    if bar_index == 0
+        confirmedKey := rawKey
+    else
+        confirmStreak := rawKey == rawKeyPrev ? confirmStreak + 1 : 1
+        if confirmStreak >= confirmBars and rawKey != confirmedKey
+            confirmedKey := rawKey
+    parts = str.split(confirmedKey, "|")
+    [array.get(parts, 0), array.get(parts, 1)]
+
+[wRegime, wDirection] = request.security(syminfo.tickerid, "W", f_classifyConfirmedW(confirmBars))
+[dRegime, dDirection] = request.security(syminfo.tickerid, "D", f_classifyConfirmedD(confirmBars))
+[hRegime, hDirection] = request.security(syminfo.tickerid, "60", f_classifyConfirmedH(confirmBars))
 
 // ---------------------------------------------------------------------
 // Display -- colors match the Regime Desk dashboard's regime palette.

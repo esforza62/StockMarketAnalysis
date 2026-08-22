@@ -27,9 +27,9 @@ from .regime_backtest import collect_trades, summarize_by_regime
 INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y", "15m": "730d"}
 
 
-def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None) -> dict:
+def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None, confirm_bars: int = 3) -> dict:
     period = INTERVAL_PERIODS[interval]
-    trades = collect_trades(tickers, period=period, interval=interval, start_date=start_date)
+    trades = collect_trades(tickers, period=period, interval=interval, start_date=start_date, confirm_bars=confirm_bars)
     run_at = datetime.now(timezone.utc).isoformat()
 
     record = {
@@ -66,6 +66,11 @@ def main() -> None:
         help="comma-separated intervals that stay on their INTERVAL_PERIODS rolling window even when --start-date "
              "is set for the rest (e.g. 15m, to keep it on a short window while 1d/1h/1w do a full historical rebuild)",
     )
+    parser.add_argument(
+        "--confirm-bars", type=int, default=3,
+        help="require the regime to hold for this many consecutive bars before a trade's entry is tagged with it "
+             "(--confirm-bars 1 disables confirmation, using the raw per-bar regime)",
+    )
     args = parser.parse_args()
 
     rolling_intervals = {i.strip() for i in args.rolling_intervals.split(",") if i.strip()} if args.rolling_intervals else set()
@@ -88,7 +93,7 @@ def main() -> None:
     with log_path.open("a") as f:
         for interval in intervals:
             start_date = None if interval in rolling_intervals else args.start_date
-            record = run_snapshot(tickers, interval, conn=conn, start_date=start_date)
+            record = run_snapshot(tickers, interval, conn=conn, start_date=start_date, confirm_bars=args.confirm_bars)
             f.write(json.dumps(record) + "\n")
             print(f"{interval}: {record['total_trades']} trades across {record['tickers_with_trades']}/{record['ticker_count']} tickers")
 

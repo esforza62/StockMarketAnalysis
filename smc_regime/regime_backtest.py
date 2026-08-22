@@ -14,7 +14,7 @@ import pandas as pd
 
 from .backtest import backtest_strategy
 from .data import fetch_ohlcv
-from .regime import RegimeThresholds, classify_regime
+from .regime import RegimeThresholds, classify_regime, confirmed_regime
 from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
 from .strategies import STRATEGIES
 
@@ -49,9 +49,19 @@ def collect_trades(
     interval: str = "1d",
     t: RegimeThresholds = RegimeThresholds(),
     start_date: str | None = None,
+    confirm_bars: int = 3,
 ) -> pd.DataFrame:
     """Backtest every strategy on every ticker and tag each trade with the
-    regime/direction active on its entry date."""
+    regime/direction active on its entry date.
+
+    Regime is confirmed_regime()-filtered before tagging, not raw
+    classify_regime() output: a trade tagged with a regime that was only
+    true for a single noisy bar isn't a meaningful measurement of "which
+    strategy works in this regime" -- confirm_bars requires the regime to
+    have held for that many consecutive bars before a trade's entry is
+    attributed to it. Set confirm_bars=1 to disable and get the raw
+    per-bar behavior this used before.
+    """
     records = []
 
     dfs = _fetch_all(tickers, period, interval, start_date)
@@ -59,7 +69,7 @@ def collect_trades(
         df = dfs.get(ticker)
         if df is None:
             continue
-        regime = classify_regime(df, t)
+        regime = confirmed_regime(classify_regime(df, t), confirm_bars=confirm_bars)
 
         for strategy in STRATEGIES:
             for trade in backtest_strategy(df, strategy):

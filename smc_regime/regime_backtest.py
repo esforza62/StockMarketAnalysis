@@ -15,6 +15,7 @@ import pandas as pd
 from .backtest import backtest_strategy
 from .data import fetch_ohlcv
 from .regime import RegimeThresholds, classify_regime
+from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
 from .strategies import STRATEGIES
 
 # Tiingo's historical-prices endpoint has no batch/multi-ticker mode --
@@ -77,7 +78,15 @@ def collect_trades(
                     }
                 )
 
-    return pd.DataFrame.from_records(records)
+    trades = pd.DataFrame.from_records(records)
+    if interval.lower() in UNADJUSTED_INTERVALS:
+        # Tiingo's IEX intraday endpoint has no adjusted-price equivalent
+        # (unlike the daily EOD endpoint, which uses adjClose -- see
+        # data.py), so a trade whose window straddles a real stock split
+        # shows a fake near-total-wipeout return. Drop those before they
+        # ever get written, rather than patching every downstream reader.
+        trades = filter_contaminated_trades(trades, load_split_cache())
+    return trades
 
 
 def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:

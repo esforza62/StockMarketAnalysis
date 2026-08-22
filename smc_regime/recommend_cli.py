@@ -10,6 +10,7 @@ import argparse
 from . import db as db_module
 from .data import fetch_ohlcv
 from .metadata import get_industry, get_sector
+from .news import ticker_sentiment
 from .regime import classify_regime, confirmed_regime
 
 
@@ -25,6 +26,7 @@ def main() -> None:
         help="require the regime to hold for this many consecutive bars before trusting it for the live lookup "
              "(--confirm-bars 1 disables confirmation, using the raw last-bar regime)",
     )
+    parser.add_argument("--news-days", type=int, default=7, help="lookback window for the news sentiment summary (0 disables it)")
     args = parser.parse_args()
 
     df = fetch_ohlcv(args.ticker, period=args.period, interval=args.interval)
@@ -58,6 +60,20 @@ def main() -> None:
         f"(avg {best['avg_return_pct']:.2f}%/trade, {best['win_rate']:.0f}% win rate, "
         f"{best['trade_count']} trades, basis: {tier_label})"
     )
+
+    if args.news_days > 0:
+        try:
+            news = ticker_sentiment(args.ticker, days=args.news_days)
+        except Exception as exc:
+            print(f"  (news sentiment unavailable: {exc})")
+        else:
+            if news["article_count"] == 0:
+                print(f"  news sentiment: no articles in the last {args.news_days}d")
+            else:
+                print(
+                    f"  news sentiment (last {args.news_days}d, {news['article_count']} articles): "
+                    f"{news['label']} (avg compound {news['avg_compound']:+.3f}), counts: {news['counts']}"
+                )
 
 
 if __name__ == "__main__":

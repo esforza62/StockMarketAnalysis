@@ -127,3 +127,19 @@ def confirmed_regime(regime_df: pd.DataFrame, confirm_bars: int = 3) -> pd.DataF
     result = regime_df.copy()
     result[["regime", "direction"]] = confirmed_key.str.split("|", expand=True).to_numpy()
     return result
+
+
+def regime_streak_bars(regime_df: pd.DataFrame) -> int:
+    """How many consecutive bars, ending at the last bar, share the same
+    (regime, direction) pair as the last bar. Meant to be called on
+    confirmed_regime()'s output -- a longer streak there means the regime
+    has held (not just been confirmed once), a stronger signal than one
+    that only just cleared the confirmation threshold."""
+    key = regime_df["regime"] + "|" + regime_df["direction"]
+    last = key.iloc[-1]
+    streak = 0
+    for value in key.iloc[::-1]:
+        if value != last:
+            break
+        streak += 1
+    return streak

@@ -29,7 +29,7 @@ INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y", "15m": "730d"}
 
 def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None, confirm_bars: int = 3) -> dict:
     period = INTERVAL_PERIODS[interval]
-    trades = collect_trades(tickers, period=period, interval=interval, start_date=start_date, confirm_bars=confirm_bars)
+    trades, latest_regime = collect_trades(tickers, period=period, interval=interval, start_date=start_date, confirm_bars=confirm_bars)
     run_at = datetime.now(timezone.utc).isoformat()
 
     record = {
@@ -49,6 +49,7 @@ def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str |
 
     if conn is not None:
         db_module.write_trades(conn, run_at, interval, trades)
+        db_module.write_latest_regime(conn, run_at, interval, latest_regime)
 
     return record
 

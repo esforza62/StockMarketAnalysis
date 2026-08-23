@@ -14,7 +14,7 @@ import pandas as pd
 
 from .backtest import backtest_strategy
 from .data import fetch_ohlcv
-from .regime import RegimeThresholds, classify_regime, confirmed_regime
+from .regime import RegimeThresholds, classify_regime, confirmed_regime, regime_streak_bars
 from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
 from .strategies import STRATEGIES
 
@@ -50,7 +50,7 @@ def collect_trades(
     t: RegimeThresholds = RegimeThresholds(),
     start_date: str | None = None,
     confirm_bars: int = 3,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Backtest every strategy on every ticker and tag each trade with the
     regime/direction active on its entry date.
 
@@ -61,8 +61,17 @@ def collect_trades(
     have held for that many consecutive bars before a trade's entry is
     attributed to it. Set confirm_bars=1 to disable and get the raw
     per-bar behavior this used before.
+
+    Returns (trades, latest_regime): `latest_regime` is one row per ticker
+    with its confirmed regime/direction/streak_bars as of the LAST bar in
+    this run -- a byproduct of the same per-ticker classification already
+    computed for trade-tagging above, captured so downstream consumers
+    (the sector/industry alignment score, a "what's every tracked ticker
+    doing right now" dashboard) can read a ticker's current regime straight
+    from the DB instead of re-fetching and re-classifying live.
     """
     records = []
+    latest_records = []
 
     dfs = _fetch_all(tickers, period, interval, start_date)
     for ticker in tickers:
@@ -70,6 +79,15 @@ def collect_trades(
         if df is None:
             continue
         regime = confirmed_regime(classify_regime(df, t), confirm_bars=confirm_bars)
+        latest = regime.iloc[-1]
+        latest_records.append(
+            {
+                "ticker": ticker,
+                "regime": latest["regime"],
+                "direction": latest["direction"],
+                "streak_bars": regime_streak_bars(regime),
+            }
+        )
 
         for strategy in STRATEGIES:
             for trade in backtest_strategy(df, strategy):
@@ -96,7 +114,7 @@ def collect_trades(
         # shows a fake near-total-wipeout return. Drop those before they
         # ever get written, rather than patching every downstream reader.
         trades = filter_contaminated_trades(trades, load_split_cache())
-    return trades
+    return trades, pd.DataFrame.from_records(latest_records)
 
 
 def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:

@@ -15,7 +15,7 @@ def main() -> None:
     parser.add_argument("--min-trades", type=int, default=5, help="hide (regime, strategy) rows with fewer trades than this")
     args = parser.parse_args()
 
-    trades = collect_trades(args.tickers, period=args.period, interval=args.interval)
+    trades, _ = collect_trades(args.tickers, period=args.period, interval=args.interval)
     if trades.empty:
         print("No trades generated.")
         return

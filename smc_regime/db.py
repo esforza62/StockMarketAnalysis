@@ -58,6 +58,15 @@ CREATE TABLE IF NOT EXISTS ticker_metadata (
     industry TEXT,
     last_updated TEXT
 );
+
+CREATE TABLE IF NOT EXISTS latest_regime (
+    run_id INTEGER NOT NULL REFERENCES runs(id),
+    ticker TEXT NOT NULL,
+    regime TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    streak_bars INTEGER NOT NULL,
+    PRIMARY KEY (run_id, ticker)
+);
 """
 
 
@@ -140,6 +149,75 @@ def upsert_ticker_metadata(conn: sqlite3.Connection, rows: list[dict[str, str]],
         [{**row, "industry": row.get("industry"), "last_updated": last_updated} for row in rows],
     )
     conn.commit()
+
+
+def write_latest_regime(conn: sqlite3.Connection, run_at: str, interval: str, latest_regime: pd.DataFrame) -> None:
+    """Replace any existing latest-regime rows for this (run_at, interval)
+    then insert fresh ones -- keeps re-running a snapshot idempotent, same
+    pattern as write_trades()."""
+    run_id = _get_or_create_run_id(conn, run_at, interval)
+    conn.execute("DELETE FROM latest_regime WHERE run_id = ?", (run_id,))
+    if latest_regime.empty:
+        conn.commit()
+        return
+
+    rows = latest_regime.copy()
+    rows["run_id"] = run_id
+    cols = ["run_id", "ticker", "regime", "direction", "streak_bars"]
+    conn.executemany(
+        f"INSERT INTO latest_regime ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
+        rows[cols].itertuples(index=False, name=None),
+    )
+    conn.commit()
+
+
+def latest_regime_for_ticker(conn: sqlite3.Connection, interval: str, ticker: str) -> dict | None:
+    """The most recently stored regime/direction/streak_bars for one ticker
+    at one interval, from the last daily_snapshot run that included it."""
+    row = conn.execute(
+        """SELECT lr.regime, lr.direction, lr.streak_bars
+           FROM latest_regime lr
+           JOIN runs r ON r.id = lr.run_id
+           WHERE r.interval = ? AND lr.ticker = ?
+           ORDER BY r.run_at DESC LIMIT 1""",
+        (interval, ticker.upper()),
+    ).fetchone()
+    if row is None:
+        return None
+    return {"regime": row[0], "direction": row[1], "streak_bars": row[2]}
+
+
+def all_latest_regimes(conn: sqlite3.Connection, interval: str) -> pd.DataFrame:
+    """Every tracked ticker's regime/direction/streak_bars plus sector/industry,
+    as of the most recent run at this interval -- one query, no live fetching.
+    Powers both the sector/industry consensus lookup below and a fully
+    DB-driven bulk setup-score pass across the whole tracking universe."""
+    run_at = _latest_run(conn, interval)
+    if run_at is None:
+        return pd.DataFrame(columns=["ticker", "regime", "direction", "streak_bars", "sector", "industry"])
+    return pd.read_sql_query(
+        """SELECT lr.ticker, lr.regime, lr.direction, lr.streak_bars, m.sector, m.industry
+           FROM latest_regime lr
+           JOIN runs r ON r.id = lr.run_id
+           LEFT JOIN ticker_metadata m ON m.ticker = lr.ticker
+           WHERE r.run_at = ? AND r.interval = ?""",
+        conn,
+        params=(run_at, interval),
+    )
+
+
+def sector_industry_direction_counts(conn: sqlite3.Connection, interval: str = "1d") -> tuple[dict[str, dict[str, int]], dict[str, dict[str, int]]]:
+    """For the latest `interval` run, counts of each direction ('up',
+    'down', 'flat', 'n/a') among all tracked tickers, grouped by sector and
+    by industry. Includes every ticker (the caller decrements one vote for
+    the ticker being scored, to exclude self-agreement)."""
+    regimes = all_latest_regimes(conn, interval)
+    sector_counts: dict[str, dict[str, int]] = {}
+    industry_counts: dict[str, dict[str, int]] = {}
+    for group_col, counts in (("sector", sector_counts), ("industry", industry_counts)):
+        for group_value, sub in regimes.groupby(group_col):
+            counts[group_value] = sub["direction"].value_counts().to_dict()
+    return sector_counts, industry_counts
 
 
 def _latest_run(conn: sqlite3.Connection, interval: str) -> str | None:

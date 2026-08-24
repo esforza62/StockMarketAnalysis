@@ -77,7 +77,7 @@ python -m smc_regime.backtest_cli AAPL MSFT TSLA --period 2y
 ```python
 from smc_regime import fetch_ohlcv, collect_trades, summarize_by_regime
 
-trades = collect_trades(["AAPL", "MSFT", "TSLA"], period="2y")
+trades, latest_regime = collect_trades(["AAPL", "MSFT", "TSLA"], period="2y")
 print(summarize_by_regime(trades))
 ```
 

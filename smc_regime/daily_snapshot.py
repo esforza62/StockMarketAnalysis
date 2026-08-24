@@ -29,7 +29,7 @@ INTERVAL_PERIODS = {"1d": "2y", "1h": "730d", "1w": "5y", "15m": "730d"}
 
 def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str | None = None, confirm_bars: int = 3) -> dict:
     period = INTERVAL_PERIODS[interval]
-    trades = collect_trades(tickers, period=period, interval=interval, start_date=start_date, confirm_bars=confirm_bars)
+    trades, latest_regime = collect_trades(tickers, period=period, interval=interval, start_date=start_date, confirm_bars=confirm_bars)
     run_at = datetime.now(timezone.utc).isoformat()
 
     record = {
@@ -49,6 +49,7 @@ def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str |
 
     if conn is not None:
         db_module.write_trades(conn, run_at, interval, trades)
+        db_module.write_latest_regime(conn, run_at, interval, latest_regime)
 
     return record
 
@@ -60,6 +61,7 @@ def main() -> None:
     parser.add_argument("--log-file", default="backtest_logs/regime_strategy_log.jsonl", help="JSONL file to append results to")
     parser.add_argument("--db-file", default=str(db_module.DEFAULT_DB_PATH), help="SQLite file to write trade-level rows to")
     parser.add_argument("--skip-metadata", action="store_true", help="skip refreshing ticker exchange/sector metadata")
+    parser.add_argument("--skip-valuation", action="store_true", help="skip refreshing forward/trailing P/E valuation data")
     parser.add_argument("--start-date", default=None, help="fixed calendar anchor (e.g. 2019-01-01) instead of the default rolling lookback -- use for a full rebuild")
     parser.add_argument(
         "--rolling-intervals", default=None,
@@ -89,6 +91,12 @@ def main() -> None:
         from . import metadata
         rows = metadata.build_ticker_metadata(tickers)
         db_module.upsert_ticker_metadata(conn, rows, datetime.now(timezone.utc).isoformat())
+
+    if not args.skip_valuation:
+        from . import valuation as valuation_module
+        results = valuation_module.fetch_valuation_batch(tickers)
+        db_module.upsert_valuation(conn, results, datetime.now(timezone.utc).isoformat())
+        print(f"valuation: {len(results)}/{len(tickers)} tickers")
 
     with log_path.open("a") as f:
         for interval in intervals:

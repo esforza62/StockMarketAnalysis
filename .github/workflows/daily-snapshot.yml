@@ -12,6 +12,15 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    # No explicit timeout previously meant GitHub's 360-minute (6h) default
+    # applied. The tracking universe grew 273->415 tickers (1.5x) and the
+    # strategy set grew 12->18 (1.5x) in the same session, roughly
+    # doubling total backtest compute on top of an already ~2h13m baseline
+    # run -- squarely at risk of hitting that 6h default and getting
+    # silently killed with nothing committed. 600 minutes (10h) gives real
+    # margin above even a generous estimate while still bounding a
+    # genuinely hung run, rather than leaving it unbounded.
+    timeout-minutes: 600
     steps:
       - uses: actions/checkout@v4
 

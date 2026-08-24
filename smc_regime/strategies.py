@@ -73,6 +73,122 @@ def vwap_trend_structure(df: pd.DataFrame, window: int = 20, slope_window: int =
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def vwap_mean_reversion(df: pd.DataFrame, window: int = 20, atr_window: int = 14, band_mult: float = 1.5) -> pd.DataFrame:
+    """Fade a stretch away from VWAP rather than follow it -- the "ranging
+    market" VWAP play: price extends band_mult ATRs below VWAP, then buy the
+    snap back through that lower band. Exit at VWAP itself (fair value),
+    not waiting for the upper band -- small, high-frequency wins in a range,
+    not a trend-following hold."""
+    close = df["Close"]
+    v = ind.vwap(df, window)
+    lower = v - ind.atr(df, atr_window) * band_mult
+    entry = (close > lower) & (close.shift(1) <= lower.shift(1))
+    exit_ = (close > v) & (close.shift(1) <= v.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vwap_breakout(df: pd.DataFrame, window: int = 20, atr_window: int = 14, band_mult: float = 1.5, vol_window: int = 20, vol_mult: float = 1.5) -> pd.DataFrame:
+    """The opposite read of the same band vwap_mean_reversion fades: a close
+    breaking out ABOVE the upper VWAP band, with volume confirmation (above
+    vol_mult times its rolling average) so a real directional move is
+    distinguished from a stretch that's just going to mean-revert back to
+    vwap_mean_reversion's territory. Exit when price gives the breakout back
+    by closing under VWAP itself."""
+    close = df["Close"]
+    v = ind.vwap(df, window)
+    upper = v + ind.atr(df, atr_window) * band_mult
+    volume_confirmed = df["Volume"] > df["Volume"].rolling(vol_window).mean() * vol_mult
+    entry = (close > upper) & (close.shift(1) <= upper.shift(1)) & volume_confirmed
+    exit_ = (close < v) & (close.shift(1) >= v.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vwap_pullback(df: pd.DataFrame, window: int = 20, slope_window: int = 5, atr_window: int = 14, touch_mult: float = 0.5) -> pd.DataFrame:
+    """Joins an already-established uptrend (VWAP rising, price already
+    above it) at a better price than vwap_trend_structure's bare crossover
+    entry: waits for a pullback bar whose LOW dips into a tight zone just
+    above VWAP (within touch_mult ATRs) while the CLOSE still holds above
+    VWAP -- buying the bounce off VWAP-as-support, not a fresh crossunder.
+    Exit when price finally closes below VWAP (the support genuinely broke,
+    not just got tested)."""
+    close, low = df["Close"], df["Low"]
+    v = ind.vwap(df, window)
+    v_rising = v.diff(slope_window) > 0
+    touch_zone = v + ind.atr(df, atr_window) * touch_mult
+    pulled_back = low <= touch_zone
+    was_trending_above = close.shift(1) > v.shift(1)
+    entry = pulled_back & was_trending_above & v_rising & (close > v)
+    exit_ = (close < v) & (close.shift(1) >= v.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vwap_ma_cross(df: pd.DataFrame, fast: int = 10, slow: int = 30, window: int = 20) -> pd.DataFrame:
+    """Dual confirmation: a fast/slow EMA bullish cross only counts as an
+    entry if price is ALSO above VWAP at that moment -- filters out MA
+    crosses happening while price is still on the wrong side of fair value.
+    Exit on either signal breaking (MA bear cross, or a close back below
+    VWAP), whichever comes first."""
+    close = df["Close"]
+    fast_ma, slow_ma = ind.ema(close, fast), ind.ema(close, slow)
+    v = ind.vwap(df, window)
+    ma_bull_cross = (fast_ma > slow_ma) & (fast_ma.shift(1) <= slow_ma.shift(1))
+    ma_bear_cross = (fast_ma < slow_ma) & (fast_ma.shift(1) >= slow_ma.shift(1))
+    vwap_break = (close < v) & (close.shift(1) >= v.shift(1))
+    entry = ma_bull_cross & (close > v)
+    exit_ = ma_bear_cross | vwap_break
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vwap_opening_range(df: pd.DataFrame, or_bars: int = 2, window: int = 20) -> pd.DataFrame:
+    """Session opening-range breakout with VWAP confirmation: each calendar
+    day's first or_bars bars set that day's opening range; a later close
+    breaking above the range high, while also above VWAP, is the entry.
+
+    Only meaningful on genuinely intraday bars (1h/15m) -- daily/weekly bars
+    have no intraday session structure, so each "session" collapses to a
+    single bar and this produces zero trades there, the same graceful-thin
+    outcome any other strategy gets on a regime bucket it doesn't suit."""
+    high, low, close = df["High"], df["Low"], df["Close"]
+    v = ind.vwap(df, window)
+    session = pd.Series(df.index.date, index=df.index)
+    bar_rank = session.groupby(session).cumcount()
+    in_opening_range = bar_rank < or_bars
+    or_high = high.where(in_opening_range).groupby(session).transform("max")
+
+    after_opening_range = bar_rank >= or_bars
+    entry = after_opening_range & (close > or_high) & (close.shift(1) <= or_high.shift(1)) & (close > v)
+    exit_ = (close < v) & (close.shift(1) >= v.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vwap_multi_timeframe(df: pd.DataFrame, window: int = 20, htf_factor: int = 4, slope_window: int = 5) -> pd.DataFrame:
+    """Approximates cross-timeframe VWAP confluence using only the single
+    OHLCV series already fetched, since this project's backtest harness
+    runs one strategy against one interval's data at a time -- a strategy
+    function has no access to a second interval's own fetch. The "higher
+    timeframe" VWAP here is a rolling VWAP over htf_factor times the base
+    window (a coarser, slower view of the same series), not a genuine
+    second timeframe's own volume-weighted price -- a true cross-interval
+    version would need backtest.py's signal contract extended to accept
+    multiple per-interval DataFrames, a larger change than a new strategy
+    function, flagged here rather than silently faked.
+
+    Entry: close above BOTH the short and long VWAP, with both rising --
+    the immediate crossover and the slower "higher timeframe" read agree.
+    Exit: close breaks back below the short VWAP."""
+    close = df["Close"]
+    v_short = ind.vwap(df, window)
+    v_long = ind.vwap(df, window * htf_factor)
+    short_rising = v_short.diff(slope_window) > 0
+    long_rising = v_long.diff(slope_window) > 0
+    entry = (
+        (close > v_short) & (close.shift(1) <= v_short.shift(1))
+        & (close > v_long) & short_rising & long_rising
+    )
+    exit_ = (close < v_short) & (close.shift(1) >= v_short.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 def rsi_macd_reversal(df: pd.DataFrame, window: int = 14, oversold: float = 30.0, fast: int = 12, slow: int = 26, signal: int = 9) -> pd.DataFrame:
     """Oversold RSI + bullish MACD cross -- momentum confirms a reversal off
     an extreme low, rather than mean-reverting on RSI alone."""
@@ -196,6 +312,12 @@ STRATEGIES = {
     "donchian": donchian_breakout,
     "supertrend": supertrend_following,
     "vwap_trend": vwap_trend_structure,
+    "vwap_mean_reversion": vwap_mean_reversion,
+    "vwap_breakout": vwap_breakout,
+    "vwap_pullback": vwap_pullback,
+    "vwap_ma_cross": vwap_ma_cross,
+    "vwap_opening_range": vwap_opening_range,
+    "vwap_multi_timeframe": vwap_multi_timeframe,
     "rsi_macd_reversal": rsi_macd_reversal,
     "rsi_macd_trend": rsi_macd_trend_continuation,
     "rsi_macd_filter": rsi_macd_filter,

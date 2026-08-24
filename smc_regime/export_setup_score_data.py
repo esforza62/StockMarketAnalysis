@@ -14,7 +14,14 @@ import json
 from collections import Counter
 
 from . import db as db_module
-from .setup_score import compute_universe_setup_scores
+from .setup_score import (
+    _ALIGNMENT_MAX,
+    _EDGE_MAX,
+    _SECTOR_INDUSTRY_MAX,
+    _STREAK_MAX,
+    _VALUATION_MAX,
+    compute_universe_setup_scores,
+)
 
 _GRADE_ORDER = ["A", "B", "C", "D"]
 
@@ -50,10 +57,11 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
                 "grade": r["grade"],
                 "total_points": r["total_points"],
                 "components": {
-                    "edge": {"points": r["edge_points"], "max": 40, "detail": r["edge_detail"]},
-                    "streak": {"points": r["streak_points"], "max": 20, "detail": f"{r['streak_bars']} bars in current confirmed regime"},
-                    "alignment": {"points": r["alignment_points"], "max": 20, "detail": r["alignment_detail"]},
-                    "sector_industry": {"points": r["sector_industry_points"], "max": 20, "detail": r["sector_industry_detail"]},
+                    "edge": {"points": r["edge_points"], "max": _EDGE_MAX, "detail": r["edge_detail"]},
+                    "streak": {"points": r["streak_points"], "max": _STREAK_MAX, "detail": f"{r['streak_bars']} bars in current confirmed regime"},
+                    "alignment": {"points": r["alignment_points"], "max": _ALIGNMENT_MAX, "detail": r["alignment_detail"]},
+                    "sector_industry": {"points": r["sector_industry_points"], "max": _SECTOR_INDUSTRY_MAX, "detail": r["sector_industry_detail"]},
+                    "valuation": {"points": r["valuation_points"], "max": _VALUATION_MAX, "detail": r["valuation_detail"]},
                 },
             }
         )

@@ -67,6 +67,13 @@ CREATE TABLE IF NOT EXISTS latest_regime (
     streak_bars INTEGER NOT NULL,
     PRIMARY KEY (run_id, ticker)
 );
+
+CREATE TABLE IF NOT EXISTS valuation (
+    ticker TEXT PRIMARY KEY,
+    trailing_pe REAL,
+    forward_pe REAL,
+    fetched_at TEXT
+);
 """
 
 
@@ -149,6 +156,41 @@ def upsert_ticker_metadata(conn: sqlite3.Connection, rows: list[dict[str, str]],
         [{**row, "industry": row.get("industry"), "last_updated": last_updated} for row in rows],
     )
     conn.commit()
+
+
+def upsert_valuation(conn: sqlite3.Connection, rows: dict[str, dict], fetched_at: str) -> None:
+    """`rows` maps ticker -> {trailing_pe, forward_pe} (valuation.fetch_valuation_batch()'s
+    shape). A ticker whose fetch failed simply isn't in `rows` and its
+    existing row (if any) is left untouched -- a transient fetch failure
+    shouldn't erase a previously-known value."""
+    if not rows:
+        return
+    conn.executemany(
+        """INSERT INTO valuation (ticker, trailing_pe, forward_pe, fetched_at)
+           VALUES (:ticker, :trailing_pe, :forward_pe, :fetched_at)
+           ON CONFLICT(ticker) DO UPDATE SET
+               trailing_pe = excluded.trailing_pe,
+               forward_pe = excluded.forward_pe,
+               fetched_at = excluded.fetched_at""",
+        [
+            {"ticker": ticker.upper(), "trailing_pe": data.get("trailing_pe"), "forward_pe": data.get("forward_pe"), "fetched_at": fetched_at}
+            for ticker, data in rows.items()
+        ],
+    )
+    conn.commit()
+
+
+def get_valuation(conn: sqlite3.Connection, ticker: str) -> dict | None:
+    row = conn.execute(
+        "SELECT trailing_pe, forward_pe FROM valuation WHERE ticker = ?", (ticker.upper(),)
+    ).fetchone()
+    if row is None:
+        return None
+    return {"trailing_pe": row[0], "forward_pe": row[1]}
+
+
+def all_valuation(conn: sqlite3.Connection) -> pd.DataFrame:
+    return pd.read_sql_query("SELECT ticker, trailing_pe, forward_pe FROM valuation", conn)
 
 
 def write_latest_regime(conn: sqlite3.Connection, run_at: str, interval: str, latest_regime: pd.DataFrame) -> None:

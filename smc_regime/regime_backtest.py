@@ -145,6 +145,29 @@ def _compounded_return_pct(group: pd.DataFrame) -> float:
     return per_ticker.mean()
 
 
+def _ticker_max_drawdown_pct(trades: pd.DataFrame) -> float:
+    """Peak-to-trough drawdown on one ticker's own sequential equity curve --
+    same ordering/compounding basis as _ticker_compounded_return_pct, so a
+    string of wins followed by one catastrophic loss shows up here even
+    when the AVERAGE return still looks good."""
+    returns = trades.sort_values("entry_date")["return_pct"]
+    equity = (1 + returns / 100).cumprod()
+    peak = equity.cummax()
+    drawdown = (equity / peak - 1) * 100
+    return drawdown.min()
+
+
+def _max_drawdown_pct(group: pd.DataFrame) -> float:
+    """Worst per-ticker max drawdown across every ticker that traded this
+    strategy in this regime bucket -- deliberately the WORST case, not an
+    average across tickers, since averaging a tail-risk figure hides
+    exactly the risk it exists to surface (a strategy where most tickers
+    drew down 10% but one drew down 90% is not well-described by "50%
+    average drawdown")."""
+    per_ticker = group.groupby("ticker").apply(_ticker_max_drawdown_pct)
+    return per_ticker.min()
+
+
 def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
     """Aggregate trade-level results into (regime, direction, strategy) performance.
 
@@ -157,6 +180,7 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
 
     def _agg(group: pd.DataFrame) -> pd.Series:
         returns = group["return_pct"]
+        losers = returns[returns < 0]
         return pd.Series(
             {
                 "trade_count": len(group),
@@ -164,6 +188,10 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
                 "avg_return_pct": returns.mean(),
                 "total_return_pct": returns.sum(),
                 "compounded_return_pct": _compounded_return_pct(group),
+                "worst_trade_pct": returns.min(),
+                "loss_rate_pct": (returns < 0).mean() * 100,
+                "avg_loss_pct": losers.mean() if not losers.empty else 0.0,
+                "max_drawdown_pct": _max_drawdown_pct(group),
             }
         )
 

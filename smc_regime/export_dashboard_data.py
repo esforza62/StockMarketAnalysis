@@ -6,7 +6,10 @@ from __future__ import annotations
 import argparse
 import json
 
+import pandas as pd
+
 from . import db as db_module
+from .regime_backtest import summarize_by_regime
 
 STRATEGY_NAMES = {
     "rsi": "RSI Mean Reversion",
@@ -39,41 +42,42 @@ def _interval_payload(conn, interval: str) -> dict:
     if run_at is None:
         return {"run_at": None, "ticker_count": 0, "total_trades": 0, "buckets": []}
 
-    rows = conn.execute(
-        """SELECT t.regime, t.direction, s.name,
-                  COUNT(*),
-                  AVG(CASE WHEN t.return_pct > 0 THEN 1.0 ELSE 0.0 END) * 100,
-                  AVG(t.return_pct),
-                  SUM(t.return_pct)
+    trades = pd.read_sql_query(
+        """SELECT t.ticker, s.name AS strategy, t.regime, t.direction,
+                  t.entry_date, t.exit_date, t.return_pct
            FROM trades t
            JOIN runs r ON r.id = t.run_id
            JOIN strategies s ON s.id = t.strategy_id
-           WHERE r.run_at = ? AND r.interval = ?
-           GROUP BY t.regime, t.direction, s.name""",
-        (run_at, interval),
-    ).fetchall()
-    ticker_count = conn.execute(
-        """SELECT COUNT(DISTINCT t.ticker) FROM trades t
-           JOIN runs r ON r.id = t.run_id WHERE r.run_at = ? AND r.interval = ?""",
-        (run_at, interval),
-    ).fetchone()[0]
-    total_trades = conn.execute(
-        """SELECT COUNT(*) FROM trades t
-           JOIN runs r ON r.id = t.run_id WHERE r.run_at = ? AND r.interval = ?""",
-        (run_at, interval),
-    ).fetchone()[0]
+           WHERE r.run_at = ? AND r.interval = ?""",
+        conn,
+        params=(run_at, interval),
+    )
+    ticker_count = trades["ticker"].nunique()
+    total_trades = len(trades)
+
+    # summarize_by_regime() (regime_backtest.py) is the single source of
+    # truth for these stats -- same function the ad hoc backtest_cli.py
+    # output and the nightly JSONL log use, rather than a second,
+    # SQL-only reimplementation that couldn't express max_drawdown_pct's
+    # per-ticker sequential-equity-curve logic anyway.
+    summary = summarize_by_regime(trades) if not trades.empty else pd.DataFrame()
 
     buckets: dict[str, list[dict]] = {}
-    for regime, direction, strategy, trade_count, win_rate, avg_return_pct, total_return_pct in rows:
+    for row in summary.itertuples(index=False):
         entry = {
-            "strategy": strategy,
-            "trade_count": trade_count,
-            "win_rate": round(win_rate, 1),
-            "avg_return_pct": round(avg_return_pct, 2),
-            "total_return_pct": round(total_return_pct, 1),
-            "thin": trade_count < MIN_TRADES,
+            "strategy": row.strategy,
+            "trade_count": int(row.trade_count),
+            "win_rate": round(row.win_rate, 1),
+            "avg_return_pct": round(row.avg_return_pct, 2),
+            "total_return_pct": round(row.total_return_pct, 1),
+            "compounded_return_pct": round(row.compounded_return_pct, 1),
+            "worst_trade_pct": round(row.worst_trade_pct, 1),
+            "loss_rate_pct": round(row.loss_rate_pct, 1),
+            "avg_loss_pct": round(row.avg_loss_pct, 1),
+            "max_drawdown_pct": round(row.max_drawdown_pct, 1),
+            "thin": row.trade_count < MIN_TRADES,
         }
-        buckets.setdefault(f"{regime}|{direction}", []).append(entry)
+        buckets.setdefault(f"{row.regime}|{row.direction}", []).append(entry)
 
     bucket_list = []
     for key, entries in buckets.items():

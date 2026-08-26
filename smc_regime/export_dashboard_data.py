@@ -25,7 +25,6 @@ STRATEGY_NAMES = {
     "rsi_dip_recovery": "RSI Dip & Recovery",
     "rsi_dual_hma": "Dual RSI + Hull MA",
     "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
-    "chandelier_tail": "Donchian + Chandelier Tail",
 }
 MIN_TRADES = 15
 REGIME_ORDER = {"choppy": 0, "trending": 1, "parabolic": 2}

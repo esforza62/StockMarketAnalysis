@@ -355,6 +355,57 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def donchian_chandelier_tail(
+    df: pd.DataFrame,
+    entry_window: int = 20,
+    atr_window: int = 22,
+    atr_mult: float = 3.0,
+) -> pd.DataFrame:
+    """Tail-catching trend-follower for the parabolic regime: the same
+    Donchian breakout trigger as donchian_breakout, but no fixed or
+    indicator-crossover exit -- the position is held under a chandelier
+    trailing stop (running highest high since entry, minus atr_mult ATRs)
+    that only ever ratchets up, never down. Built for parabolic moves
+    specifically: every other strategy in this module exits on the first
+    sign of a pullback (a crossover, a band re-entry, a fixed threshold),
+    which caps exactly the outlier "tail" of the return distribution that
+    parabolic acceleration is supposed to produce. This lets a genuine
+    blow-off run all the way to its own reversal instead.
+
+    The chandelier level resets to a fresh running high every time a new
+    position opens, so it can't be expressed as a stateless column the way
+    every other strategy's exit is -- it needs an explicit bar-by-bar loop,
+    tracking its own local entry/exit state purely to compute where this
+    one exit series should fire. backtest.py's own state machine then
+    independently replays these entry/exit signals as usual; the loop here
+    doesn't feed anything back into it.
+    """
+    close = df["Close"]
+    high = df["High"]
+    low = df["Low"]
+    channel_high = high.rolling(entry_window).max().shift(1)
+    entry = (close > channel_high) & (close.shift(1) <= channel_high.shift(1))
+    entry = entry.fillna(False)
+    atr = ind.atr(df, atr_window)
+
+    exit_ = pd.Series(False, index=df.index)
+    in_position = False
+    running_high = None
+    for date in df.index:
+        if in_position:
+            running_high = max(running_high, high.loc[date])
+            stop = running_high - atr.loc[date] * atr_mult
+            if low.loc[date] <= stop:
+                exit_.loc[date] = True
+                in_position = False
+                continue
+        if not in_position and entry.loc[date]:
+            in_position = True
+            running_high = high.loc[date]
+
+    return pd.DataFrame({"entry": entry, "exit": exit_})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -375,4 +426,5 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "chandelier_tail": donchian_chandelier_tail,
 }

@@ -26,6 +26,12 @@ STRATEGY_NAMES = {
     "rsi_dual_hma": "Dual RSI + Hull MA",
     "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
     "chandelier_tail": "Donchian + Chandelier Tail",
+    "vwap_mean_reversion": "VWAP Mean Reversion",
+    "vwap_breakout": "VWAP Breakout",
+    "vwap_pullback": "VWAP Pullback",
+    "vwap_ma_cross": "VWAP-Filtered MA Cross",
+    "vwap_opening_range": "VWAP Opening Range",
+    "vwap_multi_timeframe": "VWAP Multi-Timeframe",
 }
 MIN_TRADES = 15
 REGIME_ORDER = {"choppy": 0, "trending": 1, "parabolic": 2}

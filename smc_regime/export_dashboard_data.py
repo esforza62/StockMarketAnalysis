@@ -25,7 +25,6 @@ STRATEGY_NAMES = {
     "rsi_dip_recovery": "RSI Dip & Recovery",
     "rsi_dual_hma": "Dual RSI + Hull MA",
     "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
-    "chandelier_tail": "Donchian + Chandelier Tail",
     "vwap_mean_reversion": "VWAP Mean Reversion",
     "vwap_breakout": "VWAP Breakout",
     "vwap_pullback": "VWAP Pullback",

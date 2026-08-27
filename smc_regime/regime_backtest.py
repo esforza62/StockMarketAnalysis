@@ -181,11 +181,13 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
     def _agg(group: pd.DataFrame) -> pd.Series:
         returns = group["return_pct"]
         losers = returns[returns < 0]
+        hold_days = (group["exit_date"] - group["entry_date"]).dt.total_seconds() / 86400
         return pd.Series(
             {
                 "trade_count": len(group),
                 "win_rate": (returns > 0).mean() * 100,
                 "avg_return_pct": returns.mean(),
+                "avg_hold_days": hold_days.mean(),
                 "total_return_pct": returns.sum(),
                 "compounded_return_pct": _compounded_return_pct(group),
                 "worst_trade_pct": returns.min(),

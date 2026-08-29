@@ -71,7 +71,7 @@ Every technical component falls back to half credit when its input is
 missing (short series, no volume data), consistent with how missing peer
 and valuation data is treated: absent evidence is neutral, not negative.
 
-Grade thresholds (A >= 75, B >= 55, C >= 35, D < 35), the component weights
+Grade thresholds (A >= 76, B >= 68, C >= 57, D < 57), the component weights
 and the reference points above are documented defaults -- tune them against
 real tickers rather than treating them as fixed.
 """
@@ -91,7 +91,18 @@ from .valuation import fetch_valuation
 
 _TIER_WEIGHT = {"symbol": 1.0, "industry": 0.8, "sector": 0.6, "pooled": 0.4}
 _STREAK_FULL_CREDIT_BARS = 15
-_GRADE_THRESHOLDS = [(75, "A"), (55, "B"), (35, "C"), (0, "D")]
+# Recalibrated against the first universe-wide run that carried real
+# technical readings (2026-08-29, 415 tickers): scores landed 40.1-90.5,
+# mean/median 63.9, stdev 9.7. The previous 75/55/35 cuts were set for the
+# old edge-weighted model, where a big share of the score came from a
+# backtest bucket rather than the chart; against this distribution they put
+# 67% of the universe in B and left D empty, so the grade stopped
+# discriminating and nothing was ever flagged as "skip". These cuts sit near
+# the p90/p65/p25 marks -- roughly A 10% / B 25% / C 40% / D 25% -- which
+# keeps A a genuine shortlist and gives D real membership. They describe
+# THIS universe's spread, so re-check them if the tracking universe or the
+# component weights change materially.
+_GRADE_THRESHOLDS = [(76, "A"), (68, "B"), (57, "C"), (0, "D")]
 
 _MA_MAX = 20
 _MA_POSITION_MAX = 12

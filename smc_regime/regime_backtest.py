@@ -17,6 +17,7 @@ from .data import fetch_ohlcv
 from .regime import RegimeThresholds, classify_regime, confirmed_regime, regime_streak_bars
 from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
 from .strategies import STRATEGIES
+from .technicals import technical_snapshot
 
 # Tiingo's historical-prices endpoint has no batch/multi-ticker mode --
 # confirmed by testing directly against the API, it treats a comma-joined
@@ -64,11 +65,13 @@ def collect_trades(
 
     Returns (trades, latest_regime): `latest_regime` is one row per ticker
     with its confirmed regime/direction/streak_bars as of the LAST bar in
-    this run -- a byproduct of the same per-ticker classification already
-    computed for trade-tagging above, captured so downstream consumers
-    (the sector/industry alignment score, a "what's every tracked ticker
-    doing right now" dashboard) can read a ticker's current regime straight
-    from the DB instead of re-fetching and re-classifying live.
+    this run, plus that bar's technical_snapshot() readings (RSI, MACD
+    histogram, volume participation, 50/200-MA position) -- a byproduct of
+    the same per-ticker fetch and classification already computed for
+    trade-tagging above, captured so downstream consumers (the setup score,
+    a "what's every tracked ticker doing right now" dashboard) can read a
+    ticker's current state straight from the DB instead of re-fetching and
+    re-classifying live.
     """
     records = []
     latest_records = []
@@ -86,6 +89,11 @@ def collect_trades(
                 "regime": latest["regime"],
                 "direction": latest["direction"],
                 "streak_bars": regime_streak_bars(regime),
+                # Read off the same already-fetched df rather than re-fetching
+                # per ticker later -- the setup scorer runs over the whole
+                # universe from the DB, and this is the only place the price
+                # series is already in hand.
+                **technical_snapshot(df),
             }
         )
 

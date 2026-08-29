@@ -50,6 +50,7 @@ def run_snapshot(tickers: list[str], interval: str, conn=None, start_date: str |
     if conn is not None:
         db_module.write_trades(conn, run_at, interval, trades)
         db_module.write_latest_regime(conn, run_at, interval, latest_regime)
+        db_module.write_technicals(conn, run_at, interval, latest_regime)
 
     return record
 

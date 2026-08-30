@@ -2,7 +2,12 @@ name: Daily regime-strategy snapshot
 
 on:
   schedule:
-    # 21:00 UTC daily, after the US market close
+    # 21:00 UTC daily, after the US market close. Re-pushed 2026-08-28 to
+    # re-register the schedule trigger -- GitHub's cron scheduler had
+    # gone silent (no run fired for the 08-27 21:00 UTC slot or the next
+    # one after it, ~27h with zero scheduled runs despite the workflow
+    # showing "active" and the file living on the default branch); a
+    # fresh commit to this file is the standard workaround for that.
     - cron: "0 21 * * 1-5"
   workflow_dispatch: {}
 

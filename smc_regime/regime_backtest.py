@@ -17,6 +17,7 @@ from .data import fetch_ohlcv
 from .regime import RegimeThresholds, classify_regime, confirmed_regime, regime_streak_bars
 from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
 from .strategies import STRATEGIES
+from .technicals import technical_snapshot
 
 # Tiingo's historical-prices endpoint has no batch/multi-ticker mode --
 # confirmed by testing directly against the API, it treats a comma-joined
@@ -64,11 +65,13 @@ def collect_trades(
 
     Returns (trades, latest_regime): `latest_regime` is one row per ticker
     with its confirmed regime/direction/streak_bars as of the LAST bar in
-    this run -- a byproduct of the same per-ticker classification already
-    computed for trade-tagging above, captured so downstream consumers
-    (the sector/industry alignment score, a "what's every tracked ticker
-    doing right now" dashboard) can read a ticker's current regime straight
-    from the DB instead of re-fetching and re-classifying live.
+    this run, plus that bar's technical_snapshot() readings (RSI, MACD
+    histogram, volume participation, 50/200-MA position) -- a byproduct of
+    the same per-ticker fetch and classification already computed for
+    trade-tagging above, captured so downstream consumers (the setup score,
+    a "what's every tracked ticker doing right now" dashboard) can read a
+    ticker's current state straight from the DB instead of re-fetching and
+    re-classifying live.
     """
     records = []
     latest_records = []
@@ -86,6 +89,11 @@ def collect_trades(
                 "regime": latest["regime"],
                 "direction": latest["direction"],
                 "streak_bars": regime_streak_bars(regime),
+                # Read off the same already-fetched df rather than re-fetching
+                # per ticker later -- the setup scorer runs over the whole
+                # universe from the DB, and this is the only place the price
+                # series is already in hand.
+                **technical_snapshot(df),
             }
         )
 
@@ -181,11 +189,13 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
     def _agg(group: pd.DataFrame) -> pd.Series:
         returns = group["return_pct"]
         losers = returns[returns < 0]
+        hold_days = (group["exit_date"] - group["entry_date"]).dt.total_seconds() / 86400
         return pd.Series(
             {
                 "trade_count": len(group),
                 "win_rate": (returns > 0).mean() * 100,
                 "avg_return_pct": returns.mean(),
+                "avg_hold_days": hold_days.mean(),
                 "total_return_pct": returns.sum(),
                 "compounded_return_pct": _compounded_return_pct(group),
                 "worst_trade_pct": returns.min(),

@@ -74,7 +74,31 @@ CREATE TABLE IF NOT EXISTS valuation (
     forward_pe REAL,
     fetched_at TEXT
 );
+
+-- Same (run_id, ticker) grain as latest_regime and written by the same
+-- pass, but kept as its own table so an existing database picks it up via
+-- CREATE TABLE IF NOT EXISTS instead of needing an ALTER TABLE migration.
+-- Every reading is nullable: short series (a 200-bar MA needs 200 bars) and
+-- missing volume are expected, not errors.
+CREATE TABLE IF NOT EXISTS technicals (
+    run_id INTEGER NOT NULL REFERENCES runs(id),
+    ticker TEXT NOT NULL,
+    close REAL,
+    rsi REAL,
+    macd_hist REAL,
+    macd_hist_prev REAL,
+    ma_fast REAL,
+    ma_slow REAL,
+    volume_ratio REAL,
+    price_change_pct REAL,
+    PRIMARY KEY (run_id, ticker)
+);
 """
+
+_TECHNICAL_COLUMNS = [
+    "close", "rsi", "macd_hist", "macd_hist_prev",
+    "ma_fast", "ma_slow", "volume_ratio", "price_change_pct",
+]
 
 
 def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -211,6 +235,63 @@ def write_latest_regime(conn: sqlite3.Connection, run_at: str, interval: str, la
         rows[cols].itertuples(index=False, name=None),
     )
     conn.commit()
+
+
+def write_technicals(conn: sqlite3.Connection, run_at: str, interval: str, latest_regime: pd.DataFrame) -> None:
+    """Persist the per-ticker technical readings that collect_trades()
+    captured alongside the regime, from the same DataFrame. Columns the
+    caller didn't supply (an older caller, or a snapshot that predates a
+    newly added reading) are written as NULL rather than failing, and the
+    scorer treats NULL as neutral."""
+    run_id = _get_or_create_run_id(conn, run_at, interval)
+    conn.execute("DELETE FROM technicals WHERE run_id = ?", (run_id,))
+    if latest_regime.empty:
+        conn.commit()
+        return
+
+    rows = latest_regime.copy()
+    rows["run_id"] = run_id
+    for col in _TECHNICAL_COLUMNS:
+        if col not in rows.columns:
+            rows[col] = None
+    cols = ["run_id", "ticker", *_TECHNICAL_COLUMNS]
+    conn.executemany(
+        f"INSERT INTO technicals ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
+        rows[cols].astype(object).where(pd.notna(rows[cols]), None).itertuples(index=False, name=None),
+    )
+    conn.commit()
+
+
+def all_technicals(conn: sqlite3.Connection, interval: str) -> pd.DataFrame:
+    """Every tracked ticker's technical readings as of the most recent run
+    at this interval -- the technical counterpart to all_latest_regimes()."""
+    run_at = _latest_run(conn, interval)
+    if run_at is None:
+        return pd.DataFrame(columns=["ticker", *_TECHNICAL_COLUMNS])
+    return pd.read_sql_query(
+        f"""SELECT t.ticker, {', '.join('t.' + c for c in _TECHNICAL_COLUMNS)}
+           FROM technicals t
+           JOIN runs r ON r.id = t.run_id
+           WHERE r.run_at = ? AND r.interval = ?""",
+        conn,
+        params=(run_at, interval),
+    )
+
+
+def technicals_for_ticker(conn: sqlite3.Connection, interval: str, ticker: str) -> dict | None:
+    """The most recently stored technical readings for one ticker at one
+    interval, from the last daily_snapshot run that included it."""
+    row = conn.execute(
+        f"""SELECT {', '.join('t.' + c for c in _TECHNICAL_COLUMNS)}
+           FROM technicals t
+           JOIN runs r ON r.id = t.run_id
+           WHERE r.interval = ? AND t.ticker = ?
+           ORDER BY r.run_at DESC LIMIT 1""",
+        (interval, ticker.upper()),
+    ).fetchone()
+    if row is None:
+        return None
+    return dict(zip(_TECHNICAL_COLUMNS, row))
 
 
 def latest_regime_for_ticker(conn: sqlite3.Connection, interval: str, ticker: str) -> dict | None:

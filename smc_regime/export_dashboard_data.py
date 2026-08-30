@@ -25,6 +25,12 @@ STRATEGY_NAMES = {
     "rsi_dip_recovery": "RSI Dip & Recovery",
     "rsi_dual_hma": "Dual RSI + Hull MA",
     "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
+    "vwap_mean_reversion": "VWAP Mean Reversion",
+    "vwap_breakout": "VWAP Breakout",
+    "vwap_pullback": "VWAP Pullback",
+    "vwap_ma_cross": "VWAP-Filtered MA Cross",
+    "vwap_opening_range": "VWAP Opening Range",
+    "vwap_multi_timeframe": "VWAP Multi-Timeframe",
 }
 MIN_TRADES = 15
 REGIME_ORDER = {"choppy": 0, "trending": 1, "parabolic": 2}
@@ -56,6 +62,15 @@ def _interval_payload(conn, interval: str) -> dict:
     ticker_count = trades["ticker"].nunique()
     total_trades = len(trades)
 
+    # entry_date/exit_date come back as raw Unix-epoch-seconds integers
+    # (db.py's storage format) -- summarize_by_regime() expects the same
+    # datetime dtype collect_trades() produces for its other callers
+    # (backtest_cli.py, daily_snapshot.py), so avg_hold_days's date
+    # subtraction works the same way regardless of caller.
+    if not trades.empty:
+        trades["entry_date"] = pd.to_datetime(trades["entry_date"], unit="s", utc=True)
+        trades["exit_date"] = pd.to_datetime(trades["exit_date"], unit="s", utc=True)
+
     # summarize_by_regime() (regime_backtest.py) is the single source of
     # truth for these stats -- same function the ad hoc backtest_cli.py
     # output and the nightly JSONL log use, rather than a second,
@@ -70,6 +85,7 @@ def _interval_payload(conn, interval: str) -> dict:
             "trade_count": int(row.trade_count),
             "win_rate": round(row.win_rate, 1),
             "avg_return_pct": round(row.avg_return_pct, 2),
+            "avg_hold_days": round(row.avg_hold_days, 1),
             "total_return_pct": round(row.total_return_pct, 1),
             "compounded_return_pct": round(row.compounded_return_pct, 1),
             "worst_trade_pct": round(row.worst_trade_pct, 1),

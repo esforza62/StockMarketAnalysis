@@ -104,6 +104,15 @@ _STREAK_FULL_CREDIT_BARS = 15
 # component weights change materially.
 _GRADE_THRESHOLDS = [(76, "A"), (68, "B"), (57, "C"), (0, "D")]
 
+# Scores cluster tightly -- on a typical run the 44 A-grade names span ~16
+# points, averaging under 0.4 points between adjacent names. A hard cut
+# through that density makes the letter look more decisive than the number
+# is: a ticker at 75.7 and one at 76.2 are not meaningfully different setups,
+# but they read as B and A. Anything within this margin of a cut is marked
+# borderline so the dashboard can say so, rather than silently rounding a
+# half-point of noise into a grade change.
+_BORDERLINE_MARGIN = 1.0
+
 _MA_MAX = 20
 _MA_POSITION_MAX = 12
 _MA_CROSS_MAX = 8
@@ -353,6 +362,34 @@ def _grade(total_points: float) -> str:
     return "D"
 
 
+def _borderline(total_points: float) -> dict | None:
+    """Whether this score sits within _BORDERLINE_MARGIN of a grade cut, and
+    which grade is on the other side of it.
+
+    Returns None for scores comfortably inside their band. Otherwise
+    `adjacent` is the grade the ticker would hold if it moved across the
+    nearest cut, and `direction` says which way it is currently sitting:
+    "below" means it fell just short of the better grade (treat it as
+    effectively that grade), "above" means it only just holds its own
+    (treat it as fragile).
+    """
+    cuts = [t for t, _ in _GRADE_THRESHOLDS if t > 0]
+    nearest = min(cuts, key=lambda c: abs(total_points - c))
+    gap = abs(total_points - nearest)
+    if gap > _BORDERLINE_MARGIN:
+        return None
+
+    above_grade = _grade(nearest)
+    below_grade = _grade(nearest - 0.01)
+    below = total_points < nearest
+    return {
+        "cut": float(nearest),
+        "gap": round(gap, 1),
+        "direction": "below" if below else "above",
+        "adjacent": above_grade if below else below_grade,
+    }
+
+
 def compute_setup_score(
     ticker: str,
     db_path: str = str(db_module.DEFAULT_DB_PATH),
@@ -438,6 +475,7 @@ def compute_setup_score(
         "industry": industry,
         "grade": _grade(total),
         "total_points": round(total, 1),
+        "borderline": _borderline(round(total, 1)),
         "components": components,
         "strategy": _strategy_info(best),
         "technicals": snapshot,
@@ -519,6 +557,7 @@ def compute_universe_setup_scores(
             "direction": r["direction"],
             "grade": _grade(total),
             "total_points": round(total, 1),
+            "borderline": _borderline(round(total, 1)),
             "streak_points": round(streak_pts, 1),
             "streak_bars": int(r["streak_bars"]),
             "alignment_points": round(align_pts, 1),

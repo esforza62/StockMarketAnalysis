@@ -60,12 +60,17 @@ Score components (100 points total):
     side if peers net the same direction, half credit if peers are mixed or
     this ticker itself is flat/choppy, zero if peers net the opposite. No
     peer data scores half credit -- missing data isn't misalignment.
-  - Valuation stretch (_VALUATION_MAX pts) -- does the forward P/E sit
-    ABOVE the trailing P/E, implying analysts expect earnings to shrink even
-    as the market pays today's multiple? This measures RELATIVE divergence
-    (forward vs. that same ticker's own trailing P/E), not absolute
-    expensiveness. Missing/negative P/E (ETFs, loss-making companies)
-    scores half credit -- neutral, since there's nothing to diverge from.
+  - Valuation (_VALUATION_MAX pts) -- split into what you are paying and
+    which way it is travelling, because the second alone was blind to the
+    first. Level (_VALUATION_LEVEL_MAX) bands the absolute forward P/E
+    against this universe's spread; direction (_VALUATION_DIRECTION_MAX)
+    scores forward against that same ticker's OWN trailing multiple, so a
+    business whose earnings are expected to grow still earns credit. Scored
+    only on relative divergence, a name at 174x forward took full marks
+    purely because its trailing multiple was higher still. Both halves are
+    gradients rather than cliffs; each falls back to its own half credit
+    when its input is missing (ETFs, loss-making companies), so absent
+    evidence is neutral rather than treated as expensive.
 
 Every technical component falls back to half credit when its input is
 missing (short series, no volume data), consistent with how missing peer
@@ -123,7 +128,20 @@ _STREAK_MAX = 10
 _ALIGNMENT_MAX = 10
 _SECTOR_INDUSTRY_MAX = 5  # split evenly, _SECTOR_INDUSTRY_MAX / 2 per side
 _VALUATION_MAX = 10
-_VALUATION_STRETCH_THRESHOLD_PCT = 25.0  # forward P/E this much above trailing -> zero credit
+# Split: what you are paying (absolute forward multiple) vs. which way the
+# multiple is travelling (forward against this ticker's own trailing). The
+# level carries more weight because direction alone was blind to it -- a name
+# at 174x forward scored full marks purely because trailing was higher still.
+_VALUATION_LEVEL_MAX = 6
+_VALUATION_DIRECTION_MAX = 4
+# Banded against this universe's own forward-P/E spread: median ~17, p75 ~25,
+# p90 ~35. Sector medians run 13.9 (Financials) to 20.8 (Industrials), a
+# narrow enough range that one universe-wide band does not systematically
+# penalise the growth sectors.
+_PE_CHEAP = 20.0       # at or below this -> full level credit
+_PE_STRETCHED = 50.0   # at or above this -> no level credit
+_PE_IMPROVEMENT_FULL_CREDIT_PCT = 30.0  # forward this far BELOW trailing -> full direction credit
+_VALUATION_STRETCH_THRESHOLD_PCT = 25.0  # forward this far ABOVE trailing -> no direction credit
 
 # Volume within +/-15% of its own baseline is "about normal" -- neither
 # conviction nor its absence, so it scores the middle of the band either way.
@@ -319,24 +337,89 @@ def _sector_industry_points(
     return sec_pts + ind_pts, f"{sec_detail}; {ind_detail}"
 
 
-def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tuple[float, str]:
-    if trailing_pe is None or forward_pe is None:
-        return _VALUATION_MAX / 2, "no usable trailing/forward P/E data (ETF, or negative/missing earnings)"
+def _finite(value) -> float | None:
+    """None for anything that isn't a usable positive number.
 
+    The P/E columns come back from SQLite as NaN rather than NULL for ETFs
+    and loss-making companies, and `x is None` does not catch NaN -- the
+    arithmetic below then yields NaN, compares False against every branch,
+    and silently lands on zero credit. That quietly penalised ~23% of the
+    universe by 5 points while printing "nan% higher -- earnings expected to
+    shrink". Non-positive P/Es are treated the same way: a negative multiple
+    means the company lost money, which is not a valuation ratio at all.
+    """
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value <= 0:  # NaN or non-positive
+        return None
+    return value
+
+
+def _valuation_level_points(forward_pe: float) -> tuple[float, str]:
+    """Credit for the absolute forward multiple.
+
+    Direction alone said nothing about what you are actually paying: a name
+    at 174x forward scored full marks purely because its trailing multiple
+    was higher still. Banded against this universe's own spread (median
+    ~17, p75 ~25, p90 ~35), and sector medians here run only 13.9-20.8, so a
+    universe-wide band does not systematically punish growth sectors.
+    """
+    if forward_pe <= _PE_CHEAP:
+        return _VALUATION_LEVEL_MAX, f"forward P/E {forward_pe:.1f} is undemanding"
+    if forward_pe >= _PE_STRETCHED:
+        return 0.0, f"forward P/E {forward_pe:.1f} is a stretched multiple to pay"
+    span = (forward_pe - _PE_CHEAP) / (_PE_STRETCHED - _PE_CHEAP)
+    return _VALUATION_LEVEL_MAX * (1 - span), f"forward P/E {forward_pe:.1f} is a full multiple"
+
+
+def _valuation_direction_points(trailing_pe: float, forward_pe: float) -> tuple[float, str]:
+    """Credit for forward vs. that ticker's OWN trailing multiple -- a
+    relative divergence, not absolute expensiveness. Scaled across the whole
+    range rather than the old all-or-nothing cliff at parity, which put 96%
+    of names at one extreme or the other."""
     gap_pct = (forward_pe - trailing_pe) / trailing_pe * 100
-    if gap_pct <= 0:
-        points = float(_VALUATION_MAX)
+    if gap_pct <= -_PE_IMPROVEMENT_FULL_CREDIT_PCT:
+        pts = _VALUATION_DIRECTION_MAX
+    elif gap_pct >= _VALUATION_STRETCH_THRESHOLD_PCT:
+        pts = 0.0
     else:
-        points = max(0.0, _VALUATION_MAX * (1 - gap_pct / _VALUATION_STRETCH_THRESHOLD_PCT))
+        span = (gap_pct + _PE_IMPROVEMENT_FULL_CREDIT_PCT) / (
+            _VALUATION_STRETCH_THRESHOLD_PCT + _PE_IMPROVEMENT_FULL_CREDIT_PCT
+        )
+        pts = _VALUATION_DIRECTION_MAX * (1 - span)
 
     if gap_pct <= 0:
-        detail = f"trailing P/E {trailing_pe:.1f}, forward P/E {forward_pe:.1f} ({-gap_pct:.0f}% lower -- earnings expected to grow)"
+        detail = f"{-gap_pct:.0f}% below trailing {trailing_pe:.1f} -- earnings expected to grow"
     else:
-        detail = (
-            f"trailing P/E {trailing_pe:.1f}, forward P/E {forward_pe:.1f} "
-            f"({gap_pct:.0f}% higher -- earnings expected to shrink, valuation may be stretched)"
-        )
-    return points, detail
+        detail = f"{gap_pct:.0f}% above trailing {trailing_pe:.1f} -- earnings expected to shrink"
+    return pts, detail
+
+
+def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tuple[float, str]:
+    """Absolute multiple plus its direction of travel, scored separately.
+
+    Either half falls back to its own half credit when its input is missing,
+    so an ETF with no earnings scores neutral rather than being treated as
+    expensive -- absent evidence is neutral, the same rule the technical
+    components follow.
+    """
+    trailing_pe, forward_pe = _finite(trailing_pe), _finite(forward_pe)
+
+    if forward_pe is None:
+        level_pts, level_detail = _VALUATION_LEVEL_MAX / 2, "no usable forward P/E (ETF, or negative/missing earnings)"
+    else:
+        level_pts, level_detail = _valuation_level_points(forward_pe)
+
+    if trailing_pe is None or forward_pe is None:
+        dir_pts, dir_detail = _VALUATION_DIRECTION_MAX / 2, "no trailing/forward pair to compare"
+    else:
+        dir_pts, dir_detail = _valuation_direction_points(trailing_pe, forward_pe)
+
+    return level_pts + dir_pts, f"{level_detail}; {dir_detail}"
 
 
 def _technical_components(snapshot: dict, regime: str) -> dict[str, tuple[float, int, str]]:

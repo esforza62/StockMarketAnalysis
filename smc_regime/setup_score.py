@@ -70,7 +70,11 @@ Score components (100 points total):
     purely because its trailing multiple was higher still. Both halves are
     gradients rather than cliffs; each falls back to its own half credit
     when its input is missing (ETFs, loss-making companies), so absent
-    evidence is neutral rather than treated as expensive.
+    evidence is neutral rather than treated as expensive. Direction is
+    additionally faded toward neutral as the trailing multiple climbs, since
+    a ratio computed off a near-zero earnings base measures the denominator
+    rather than the improvement -- the same absolute forecast gain reads as
+    -9% against a solid base and -96% against a 2c one.
 
 Every technical component falls back to half credit when its input is
 missing (short series, no volume data), consistent with how missing peer
@@ -142,6 +146,16 @@ _PE_CHEAP = 20.0       # at or below this -> full level credit
 _PE_STRETCHED = 50.0   # at or above this -> no level credit
 _PE_IMPROVEMENT_FULL_CREDIT_PCT = 30.0  # forward this far BELOW trailing -> full direction credit
 _VALUATION_STRETCH_THRESHOLD_PCT = 25.0  # forward this far ABOVE trailing -> no direction credit
+# A forward/trailing ratio computed off a near-zero earnings base measures the
+# denominator, not the improvement: the same $0.50 of forecast earnings reads
+# as -9% against a solid base and -96% against a 2c one, and forecast error on
+# 2c is enormous. Above _PE_TRAILING_RELIABLE (this universe's p90) the
+# direction signal is faded toward its neutral half credit, reaching fully
+# neutral at _PE_TRAILING_NOISE (~p99). Faded toward NEUTRAL, not toward zero:
+# an unreliable reading is absent evidence, not evidence against -- the same
+# rule the technical components and missing peer data already follow.
+_PE_TRAILING_RELIABLE = 60.0
+_PE_TRAILING_NOISE = 250.0
 
 # Volume within +/-15% of its own baseline is "about normal" -- neither
 # conviction nor its absence, so it scores the middle of the band either way.
@@ -396,6 +410,19 @@ def _valuation_direction_points(trailing_pe: float, forward_pe: float) -> tuple[
         detail = f"{-gap_pct:.0f}% below trailing {trailing_pe:.1f} -- earnings expected to grow"
     else:
         detail = f"{gap_pct:.0f}% above trailing {trailing_pe:.1f} -- earnings expected to shrink"
+
+    # Fade toward neutral once the trailing base is too small to trust.
+    if trailing_pe > _PE_TRAILING_RELIABLE:
+        neutral = _VALUATION_DIRECTION_MAX / 2
+        noise = min(
+            (trailing_pe - _PE_TRAILING_RELIABLE) / (_PE_TRAILING_NOISE - _PE_TRAILING_RELIABLE), 1.0
+        )
+        pts = pts * (1 - noise) + neutral * noise
+        if noise >= 1.0:
+            detail += f"; trailing {trailing_pe:.0f}x is too thin an earnings base to read, scored neutral"
+        else:
+            detail += f"; discounted {noise * 100:.0f}% -- trailing {trailing_pe:.0f}x is a thin earnings base"
+
     return pts, detail
 
 

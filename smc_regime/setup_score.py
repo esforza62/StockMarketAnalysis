@@ -677,6 +677,10 @@ def compute_universe_setup_scores(
             "valuation_points": round(val_pts, 1),
             "valuation_detail": val_detail,
             "strategy_info": _strategy_info(best),
+            # Reported, not scored -- how a name has already moved is context
+            # for reading the setup, not part of judging it.
+            "return_1w": snapshot.get("return_1w"),
+            "return_1m": snapshot.get("return_1m"),
         }
         for name, (pts, _, detail) in tech.items():
             row[f"{name}_points"] = round(pts, 1)

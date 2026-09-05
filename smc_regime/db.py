@@ -91,6 +91,8 @@ CREATE TABLE IF NOT EXISTS technicals (
     ma_slow REAL,
     volume_ratio REAL,
     price_change_pct REAL,
+    return_1w REAL,
+    return_1m REAL,
     PRIMARY KEY (run_id, ticker)
 );
 """
@@ -98,7 +100,25 @@ CREATE TABLE IF NOT EXISTS technicals (
 _TECHNICAL_COLUMNS = [
     "close", "rsi", "macd_hist", "macd_hist_prev",
     "ma_fast", "ma_slow", "volume_ratio", "price_change_pct",
+    "return_1w", "return_1m",
 ]
+
+
+def _migrate_technicals(conn: sqlite3.Connection) -> None:
+    """Add technical columns introduced after a database was first created.
+
+    CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so a column
+    added to _SCHEMA never reaches a database that predates it -- the writer
+    would then fail on an unknown column. Reading the live column list and
+    adding what's missing keeps old and new databases on one path; the rows
+    stay NULL until the next snapshot fills them, which every reader already
+    treats as neutral.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(technicals)")}
+    for column in _TECHNICAL_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE technicals ADD COLUMN {column} REAL")
+    conn.commit()
 
 
 def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -106,6 +126,7 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(_SCHEMA)
+    _migrate_technicals(conn)
     return conn
 
 

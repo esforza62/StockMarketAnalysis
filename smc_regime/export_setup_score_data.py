@@ -88,10 +88,17 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
                 "direction": r["direction"],
                 "grade": r["grade"],
                 "total_points": r["total_points"],
+                # Null unless the score sits within a point of a grade cut --
+                # see setup_score._borderline. Lets the dashboard show that a
+                # 75.7 B and a 76.2 A are the same setup wearing different
+                # letters, instead of implying a real distinction.
+                "borderline": r["borderline"],
                 "components": components,
                 # Reported, not scored -- which strategy to use once the
                 # setup itself is worth taking. See setup_score's docstring.
                 "strategy": r["strategy_info"],
+                "return_1w": None if r["return_1w"] is None or r["return_1w"] != r["return_1w"] else round(r["return_1w"], 1),
+                "return_1m": None if r["return_1m"] is None or r["return_1m"] != r["return_1m"] else round(r["return_1m"], 1),
             }
         )
 

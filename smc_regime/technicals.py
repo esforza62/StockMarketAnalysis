@@ -27,6 +27,12 @@ _VOLUME_RECENT_BARS = 5
 _VOLUME_BASELINE_BARS = 50
 _MA_FAST = 50
 _MA_SLOW = 200
+# Trailing performance windows, in CALENDAR days rather than bars: "one
+# week" has to mean the same span whether the series is daily, hourly or
+# 15-minute, and a fixed bar count would silently mean five hours on the 1h
+# series. Resolved against the actual timestamps, so holidays and gaps take
+# care of themselves.
+_RETURN_WINDOWS_DAYS = {"return_1w": 7, "return_1m": 30}
 
 
 def _last_float(series: pd.Series) -> float | None:
@@ -34,6 +40,23 @@ def _last_float(series: pd.Series) -> float | None:
         return None
     value = series.iloc[-1]
     return None if pd.isna(value) else float(value)
+
+
+def _return_over(close: pd.Series, days: int) -> float | None:
+    """Percent change from the last bar at or before `days` ago to the last
+    bar in the series. None when the series doesn't reach back that far --
+    a newly listed ticker has no one-month return, and inventing one from
+    its earliest available bar would overstate the window."""
+    if close.empty or not isinstance(close.index, pd.DatetimeIndex):
+        return None
+    cutoff = close.index[-1] - pd.Timedelta(days=days)
+    prior = close.loc[close.index <= cutoff]
+    if prior.empty:
+        return None
+    start, end = prior.iloc[-1], close.iloc[-1]
+    if pd.isna(start) or pd.isna(end) or start == 0:
+        return None
+    return float((end - start) / start * 100)
 
 
 def technical_snapshot(df: pd.DataFrame) -> dict:
@@ -49,6 +72,10 @@ def technical_snapshot(df: pd.DataFrame) -> dict:
     `price_change_pct` is the price move across that same recent window, so
     the two can be read together as conviction: the same 1.5x volume means
     something very different behind an advance than behind a decline.
+
+    `return_1w` / `return_1m` are trailing performance over fixed calendar
+    windows. They are reported, not scored -- how a name has already moved
+    is context for reading the setup, not part of judging it.
     """
     close = df["Close"]
     snapshot: dict = {
@@ -60,6 +87,7 @@ def technical_snapshot(df: pd.DataFrame) -> dict:
         "macd_hist_prev": None,
         "volume_ratio": None,
         "price_change_pct": None,
+        **{name: _return_over(close, days) for name, days in _RETURN_WINDOWS_DAYS.items()},
     }
 
     hist = macd(close)["histogram"]

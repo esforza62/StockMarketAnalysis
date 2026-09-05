@@ -60,12 +60,21 @@ Score components (100 points total):
     side if peers net the same direction, half credit if peers are mixed or
     this ticker itself is flat/choppy, zero if peers net the opposite. No
     peer data scores half credit -- missing data isn't misalignment.
-  - Valuation stretch (_VALUATION_MAX pts) -- does the forward P/E sit
-    ABOVE the trailing P/E, implying analysts expect earnings to shrink even
-    as the market pays today's multiple? This measures RELATIVE divergence
-    (forward vs. that same ticker's own trailing P/E), not absolute
-    expensiveness. Missing/negative P/E (ETFs, loss-making companies)
-    scores half credit -- neutral, since there's nothing to diverge from.
+  - Valuation (_VALUATION_MAX pts) -- split into what you are paying and
+    which way it is travelling, because the second alone was blind to the
+    first. Level (_VALUATION_LEVEL_MAX) bands the absolute forward P/E
+    against this universe's spread; direction (_VALUATION_DIRECTION_MAX)
+    scores forward against that same ticker's OWN trailing multiple, so a
+    business whose earnings are expected to grow still earns credit. Scored
+    only on relative divergence, a name at 174x forward took full marks
+    purely because its trailing multiple was higher still. Both halves are
+    gradients rather than cliffs; each falls back to its own half credit
+    when its input is missing (ETFs, loss-making companies), so absent
+    evidence is neutral rather than treated as expensive. Direction is
+    additionally faded toward neutral as the trailing multiple climbs, since
+    a ratio computed off a near-zero earnings base measures the denominator
+    rather than the improvement -- the same absolute forecast gain reads as
+    -9% against a solid base and -96% against a 2c one.
 
 Every technical component falls back to half credit when its input is
 missing (short series, no volume data), consistent with how missing peer
@@ -104,6 +113,15 @@ _STREAK_FULL_CREDIT_BARS = 15
 # component weights change materially.
 _GRADE_THRESHOLDS = [(76, "A"), (68, "B"), (57, "C"), (0, "D")]
 
+# Scores cluster tightly -- on a typical run the 44 A-grade names span ~16
+# points, averaging under 0.4 points between adjacent names. A hard cut
+# through that density makes the letter look more decisive than the number
+# is: a ticker at 75.7 and one at 76.2 are not meaningfully different setups,
+# but they read as B and A. Anything within this margin of a cut is marked
+# borderline so the dashboard can say so, rather than silently rounding a
+# half-point of noise into a grade change.
+_BORDERLINE_MARGIN = 1.0
+
 _MA_MAX = 20
 _MA_POSITION_MAX = 12
 _MA_CROSS_MAX = 8
@@ -114,7 +132,30 @@ _STREAK_MAX = 10
 _ALIGNMENT_MAX = 10
 _SECTOR_INDUSTRY_MAX = 5  # split evenly, _SECTOR_INDUSTRY_MAX / 2 per side
 _VALUATION_MAX = 10
-_VALUATION_STRETCH_THRESHOLD_PCT = 25.0  # forward P/E this much above trailing -> zero credit
+# Split: what you are paying (absolute forward multiple) vs. which way the
+# multiple is travelling (forward against this ticker's own trailing). The
+# level carries more weight because direction alone was blind to it -- a name
+# at 174x forward scored full marks purely because trailing was higher still.
+_VALUATION_LEVEL_MAX = 6
+_VALUATION_DIRECTION_MAX = 4
+# Banded against this universe's own forward-P/E spread: median ~17, p75 ~25,
+# p90 ~35. Sector medians run 13.9 (Financials) to 20.8 (Industrials), a
+# narrow enough range that one universe-wide band does not systematically
+# penalise the growth sectors.
+_PE_CHEAP = 20.0       # at or below this -> full level credit
+_PE_STRETCHED = 50.0   # at or above this -> no level credit
+_PE_IMPROVEMENT_FULL_CREDIT_PCT = 30.0  # forward this far BELOW trailing -> full direction credit
+_VALUATION_STRETCH_THRESHOLD_PCT = 25.0  # forward this far ABOVE trailing -> no direction credit
+# A forward/trailing ratio computed off a near-zero earnings base measures the
+# denominator, not the improvement: the same $0.50 of forecast earnings reads
+# as -9% against a solid base and -96% against a 2c one, and forecast error on
+# 2c is enormous. Above _PE_TRAILING_RELIABLE (this universe's p90) the
+# direction signal is faded toward its neutral half credit, reaching fully
+# neutral at _PE_TRAILING_NOISE (~p99). Faded toward NEUTRAL, not toward zero:
+# an unreliable reading is absent evidence, not evidence against -- the same
+# rule the technical components and missing peer data already follow.
+_PE_TRAILING_RELIABLE = 60.0
+_PE_TRAILING_NOISE = 250.0
 
 # Volume within +/-15% of its own baseline is "about normal" -- neither
 # conviction nor its absence, so it scores the middle of the band either way.
@@ -310,24 +351,102 @@ def _sector_industry_points(
     return sec_pts + ind_pts, f"{sec_detail}; {ind_detail}"
 
 
-def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tuple[float, str]:
-    if trailing_pe is None or forward_pe is None:
-        return _VALUATION_MAX / 2, "no usable trailing/forward P/E data (ETF, or negative/missing earnings)"
+def _finite(value) -> float | None:
+    """None for anything that isn't a usable positive number.
 
+    The P/E columns come back from SQLite as NaN rather than NULL for ETFs
+    and loss-making companies, and `x is None` does not catch NaN -- the
+    arithmetic below then yields NaN, compares False against every branch,
+    and silently lands on zero credit. That quietly penalised ~23% of the
+    universe by 5 points while printing "nan% higher -- earnings expected to
+    shrink". Non-positive P/Es are treated the same way: a negative multiple
+    means the company lost money, which is not a valuation ratio at all.
+    """
+    if value is None:
+        return None
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    if value != value or value <= 0:  # NaN or non-positive
+        return None
+    return value
+
+
+def _valuation_level_points(forward_pe: float) -> tuple[float, str]:
+    """Credit for the absolute forward multiple.
+
+    Direction alone said nothing about what you are actually paying: a name
+    at 174x forward scored full marks purely because its trailing multiple
+    was higher still. Banded against this universe's own spread (median
+    ~17, p75 ~25, p90 ~35), and sector medians here run only 13.9-20.8, so a
+    universe-wide band does not systematically punish growth sectors.
+    """
+    if forward_pe <= _PE_CHEAP:
+        return _VALUATION_LEVEL_MAX, f"forward P/E {forward_pe:.1f} is undemanding"
+    if forward_pe >= _PE_STRETCHED:
+        return 0.0, f"forward P/E {forward_pe:.1f} is a stretched multiple to pay"
+    span = (forward_pe - _PE_CHEAP) / (_PE_STRETCHED - _PE_CHEAP)
+    return _VALUATION_LEVEL_MAX * (1 - span), f"forward P/E {forward_pe:.1f} is a full multiple"
+
+
+def _valuation_direction_points(trailing_pe: float, forward_pe: float) -> tuple[float, str]:
+    """Credit for forward vs. that ticker's OWN trailing multiple -- a
+    relative divergence, not absolute expensiveness. Scaled across the whole
+    range rather than the old all-or-nothing cliff at parity, which put 96%
+    of names at one extreme or the other."""
     gap_pct = (forward_pe - trailing_pe) / trailing_pe * 100
-    if gap_pct <= 0:
-        points = float(_VALUATION_MAX)
+    if gap_pct <= -_PE_IMPROVEMENT_FULL_CREDIT_PCT:
+        pts = _VALUATION_DIRECTION_MAX
+    elif gap_pct >= _VALUATION_STRETCH_THRESHOLD_PCT:
+        pts = 0.0
     else:
-        points = max(0.0, _VALUATION_MAX * (1 - gap_pct / _VALUATION_STRETCH_THRESHOLD_PCT))
+        span = (gap_pct + _PE_IMPROVEMENT_FULL_CREDIT_PCT) / (
+            _VALUATION_STRETCH_THRESHOLD_PCT + _PE_IMPROVEMENT_FULL_CREDIT_PCT
+        )
+        pts = _VALUATION_DIRECTION_MAX * (1 - span)
 
     if gap_pct <= 0:
-        detail = f"trailing P/E {trailing_pe:.1f}, forward P/E {forward_pe:.1f} ({-gap_pct:.0f}% lower -- earnings expected to grow)"
+        detail = f"{-gap_pct:.0f}% below trailing {trailing_pe:.1f} -- earnings expected to grow"
     else:
-        detail = (
-            f"trailing P/E {trailing_pe:.1f}, forward P/E {forward_pe:.1f} "
-            f"({gap_pct:.0f}% higher -- earnings expected to shrink, valuation may be stretched)"
+        detail = f"{gap_pct:.0f}% above trailing {trailing_pe:.1f} -- earnings expected to shrink"
+
+    # Fade toward neutral once the trailing base is too small to trust.
+    if trailing_pe > _PE_TRAILING_RELIABLE:
+        neutral = _VALUATION_DIRECTION_MAX / 2
+        noise = min(
+            (trailing_pe - _PE_TRAILING_RELIABLE) / (_PE_TRAILING_NOISE - _PE_TRAILING_RELIABLE), 1.0
         )
-    return points, detail
+        pts = pts * (1 - noise) + neutral * noise
+        if noise >= 1.0:
+            detail += f"; trailing {trailing_pe:.0f}x is too thin an earnings base to read, scored neutral"
+        else:
+            detail += f"; discounted {noise * 100:.0f}% -- trailing {trailing_pe:.0f}x is a thin earnings base"
+
+    return pts, detail
+
+
+def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tuple[float, str]:
+    """Absolute multiple plus its direction of travel, scored separately.
+
+    Either half falls back to its own half credit when its input is missing,
+    so an ETF with no earnings scores neutral rather than being treated as
+    expensive -- absent evidence is neutral, the same rule the technical
+    components follow.
+    """
+    trailing_pe, forward_pe = _finite(trailing_pe), _finite(forward_pe)
+
+    if forward_pe is None:
+        level_pts, level_detail = _VALUATION_LEVEL_MAX / 2, "no usable forward P/E (ETF, or negative/missing earnings)"
+    else:
+        level_pts, level_detail = _valuation_level_points(forward_pe)
+
+    if trailing_pe is None or forward_pe is None:
+        dir_pts, dir_detail = _VALUATION_DIRECTION_MAX / 2, "no trailing/forward pair to compare"
+    else:
+        dir_pts, dir_detail = _valuation_direction_points(trailing_pe, forward_pe)
+
+    return level_pts + dir_pts, f"{level_detail}; {dir_detail}"
 
 
 def _technical_components(snapshot: dict, regime: str) -> dict[str, tuple[float, int, str]]:
@@ -351,6 +470,34 @@ def _grade(total_points: float) -> str:
         if total_points >= threshold:
             return grade
     return "D"
+
+
+def _borderline(total_points: float) -> dict | None:
+    """Whether this score sits within _BORDERLINE_MARGIN of a grade cut, and
+    which grade is on the other side of it.
+
+    Returns None for scores comfortably inside their band. Otherwise
+    `adjacent` is the grade the ticker would hold if it moved across the
+    nearest cut, and `direction` says which way it is currently sitting:
+    "below" means it fell just short of the better grade (treat it as
+    effectively that grade), "above" means it only just holds its own
+    (treat it as fragile).
+    """
+    cuts = [t for t, _ in _GRADE_THRESHOLDS if t > 0]
+    nearest = min(cuts, key=lambda c: abs(total_points - c))
+    gap = abs(total_points - nearest)
+    if gap > _BORDERLINE_MARGIN:
+        return None
+
+    above_grade = _grade(nearest)
+    below_grade = _grade(nearest - 0.01)
+    below = total_points < nearest
+    return {
+        "cut": float(nearest),
+        "gap": round(gap, 1),
+        "direction": "below" if below else "above",
+        "adjacent": above_grade if below else below_grade,
+    }
 
 
 def compute_setup_score(
@@ -438,6 +585,7 @@ def compute_setup_score(
         "industry": industry,
         "grade": _grade(total),
         "total_points": round(total, 1),
+        "borderline": _borderline(round(total, 1)),
         "components": components,
         "strategy": _strategy_info(best),
         "technicals": snapshot,
@@ -519,6 +667,7 @@ def compute_universe_setup_scores(
             "direction": r["direction"],
             "grade": _grade(total),
             "total_points": round(total, 1),
+            "borderline": _borderline(round(total, 1)),
             "streak_points": round(streak_pts, 1),
             "streak_bars": int(r["streak_bars"]),
             "alignment_points": round(align_pts, 1),
@@ -528,6 +677,10 @@ def compute_universe_setup_scores(
             "valuation_points": round(val_pts, 1),
             "valuation_detail": val_detail,
             "strategy_info": _strategy_info(best),
+            # Reported, not scored -- how a name has already moved is context
+            # for reading the setup, not part of judging it.
+            "return_1w": snapshot.get("return_1w"),
+            "return_1m": snapshot.get("return_1m"),
         }
         for name, (pts, _, detail) in tech.items():
             row[f"{name}_points"] = round(pts, 1)

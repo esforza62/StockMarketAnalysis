@@ -72,7 +72,24 @@ jobs:
             fi
             echo "push rejected (attempt $attempt), rebasing onto latest remote..."
             git fetch origin "${GITHUB_REF_NAME}"
-            git rebase "origin/${GITHUB_REF_NAME}"
+
+            # Two snapshot runs overlapping -- a dispatched one still
+            # backtesting while the nightly one pushes -- both append to the
+            # log after the same ancestor. That used to conflict on every
+            # appended line, and since this step runs under `bash -e` the
+            # failed rebase killed the push outright, silently dropping a
+            # run's records. `merge=union` (.gitattributes) keeps both sides;
+            # normalize_log then restores run order and drops duplicates.
+            if ! git rebase "origin/${GITHUB_REF_NAME}"; then
+              git rebase --abort || true
+              echo "::error::rebase onto origin/${GITHUB_REF_NAME} conflicted outside the union-merged log; resolve by hand"
+              exit 1
+            fi
+            python -m smc_regime.normalize_log
+            if ! git diff --quiet backtest_logs/regime_strategy_log.jsonl; then
+              git add backtest_logs/regime_strategy_log.jsonl
+              git commit --amend --no-edit
+            fi
             sleep $((attempt * 5))
           done
           git push

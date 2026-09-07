@@ -10,10 +10,10 @@ and `trades`, so it only reflects tickers that run has scored.
 from __future__ import annotations
 
 import argparse
-import json
 from collections import Counter
 
 from . import db as db_module
+from . import jsonfmt
 from .setup_score import (
     _ALIGNMENT_MAX,
     _MA_MAX,
@@ -123,7 +123,9 @@ def main() -> None:
     args = parser.parse_args()
 
     data = export(args.db_file, args.interval, args.min_trades)
-    text = json.dumps(data, indent=2)
+    # One line per ticker: 415 records instead of ~27k lines of punctuation.
+    # See jsonfmt for why this is neither indent=2 nor fully compact.
+    text = jsonfmt.dumps(data, compact_depth=2)
     if args.out_file:
         with open(args.out_file, "w") as f:
             f.write(text)

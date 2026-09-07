@@ -4,11 +4,11 @@ dashboard needs refreshing -- it is baked at publish time, not live."""
 from __future__ import annotations
 
 import argparse
-import json
 
 import pandas as pd
 
 from . import db as db_module
+from . import jsonfmt
 from .regime_backtest import summarize_by_regime
 
 STRATEGY_NAMES = {
@@ -142,7 +142,9 @@ def main() -> None:
     args = parser.parse_args()
 
     data = export(args.db_file)
-    text = json.dumps(data, indent=2)
+    # One line per strategy row, keeping the interval/bucket structure
+    # browsable. See jsonfmt for the reasoning.
+    text = jsonfmt.dumps(data, compact_depth=5)
     if args.out_file:
         with open(args.out_file, "w") as f:
             f.write(text)

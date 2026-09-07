@@ -1,0 +1,4 @@
+# The snapshot log is append-only: two overlapping runs each add their own
+# records, so keep both sides instead of conflicting. smc_regime.normalize_log
+# re-sorts and de-duplicates afterwards -- see the daily-snapshot workflow.
+backtest_logs/regime_strategy_log.jsonl merge=union

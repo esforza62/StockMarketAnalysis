@@ -134,6 +134,13 @@ There's no automatic sync between the two: if `RegimeThresholds` or the
 indicator formulas in `smc_regime/indicators.py` change, update the Pine
 script by hand to match.
 
+`pinescript/outside_bar_rsi.pine` runs the other way round -- it is the
+user's own indicator, and `outside_bar` / `outside_bar_rsi` in
+`smc_regime/strategies.py` are the Python port of it. Its backtest is
+written up in [docs/OUTSIDE_BAR_RSI.md](docs/OUTSIDE_BAR_RSI.md): the long
+side does not beat random entry timing on the same tickers, while the short
+side (which this long-only engine cannot trade) carries the real edge.
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

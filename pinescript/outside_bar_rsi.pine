@@ -1,0 +1,95 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=6
+// Outside Bar Finder -- Wick Filtered + RSI
+//
+// The user's original indicator, kept here as the source of truth for the
+// Python port in smc_regime.strategies (outside_bar_reversal /
+// outside_bar_rsi). Note the direction of travel is the reverse of the
+// other files in this directory: those are Python-to-Pine mirrors of
+// strategies that started here, this one started in Pine.
+//
+// Marks outside bars (higher high AND lower low than the prior bar) whose
+// dominant wick points against the prior candle's direction: a bullish
+// signal needs its lower wick to dominate (sellers pushed price down and
+// got rejected) after a down bar, a bearish one its upper wick after an up
+// bar. RSI adds a second colour tier -- bullish while RSI is still below
+// its midline, bearish while still above.
+//
+// Only change from the version supplied: the two alert() calls are guarded
+// by `if` instead of being one expression that evaluates to na on bars with
+// no signal, so alert() is only ever reached with a real message string.
+// See docs/OUTSIDE_BAR_RSI.md for what the backtest of the ported version
+// actually measured -- in short, the short side is where the edge is.
+indicator("Outside Bar Finder — Wick Filtered + RSI", overlay = true)
+
+// ── Inputs ──────────────────────────────────────────────
+wickRatio    = input.float(1.0,  "Min dominant/opposing wick ratio", minval = 1.0, step = 0.1)
+reqBodyEngulf= input.bool(false, "Require body engulfing (not just range)")
+minBodyPct   = input.float(0.0,  "Min body as % of range", minval = 0, maxval = 100, step = 5) / 100
+allowDojiPrev= input.bool(false, "Allow flat/doji previous candle")
+colorBars    = input.bool(true,  "Color qualifying bars")
+
+rsiLen       = input.int(21,   "RSI length", minval = 1,  group = "RSI")
+rsiMid       = input.float(50, "RSI midline", minval = 1, maxval = 99, group = "RSI")
+forceDaily   = input.bool(false, "Force daily RSI on intraday charts",   group = "RSI")
+
+cBull        = input.color(color.teal,   "Bullish signal",          group = "Colors")
+cBear        = input.color(color.red,    "Bearish signal",          group = "Colors")
+cBullRsi     = input.color(#7FDBFF,      "Bullish + RSI below mid", group = "Colors")
+cBearRsi     = input.color(color.yellow, "Bearish + RSI above mid", group = "Colors")
+
+// ── RSI ─────────────────────────────────────────────────
+rsiLocal = ta.rsi(close, rsiLen)
+rsiVal   = forceDaily and timeframe.isintraday
+     ? request.security(syminfo.tickerid, "D", ta.rsi(close, rsiLen), lookahead = barmerge.lookahead_off)
+     : rsiLocal
+
+// ── Anatomy ─────────────────────────────────────────────
+rng       = high - low
+body      = math.abs(close - open)
+bodyTop   = math.max(close, open)
+bodyBot   = math.min(close, open)
+upWick    = high - bodyTop
+dnWick    = bodyBot - low
+
+outside   = high > high[1] and low < low[1]
+bodyOK    = rng > 0 and body / rng >= minBodyPct
+
+engulfUp  = not reqBodyEngulf or (close >= math.max(open[1], close[1]) and open <= math.min(open[1], close[1]))
+engulfDn  = not reqBodyEngulf or (open  >= math.max(open[1], close[1]) and close <= math.min(open[1], close[1]))
+
+// ── Prior-candle direction filter ───────────────────────
+prevBull  = close[1] > open[1]
+prevBear  = close[1] < open[1]
+prevFlat  = close[1] == open[1]
+
+prevOKBull = prevBear or (allowDojiPrev and prevFlat)
+prevOKBear = prevBull or (allowDojiPrev and prevFlat)
+
+// ── Signals ─────────────────────────────────────────────
+bullOB = outside and close > open and bodyOK and engulfUp and prevOKBull and dnWick >= upWick * wickRatio and dnWick > 0
+bearOB = outside and close < open and bodyOK and engulfDn and prevOKBear and upWick >= dnWick * wickRatio and upWick > 0
+
+bullLowRsi  = bullOB and rsiVal < rsiMid
+bearHighRsi = bearOB and rsiVal > rsiMid
+
+bullCol = bullLowRsi  ? cBullRsi : cBull
+bearCol = bearHighRsi ? cBearRsi : cBear
+
+// ── Plots ───────────────────────────────────────────────
+plotshape(bullOB, "Bullish Outside", shape.triangleup,   location.belowbar, color = bullCol, size = size.small)
+plotshape(bearOB, "Bearish Outside", shape.triangledown, location.abovebar, color = bearCol, size = size.small)
+
+barcolor(colorBars ? (bullOB ? bullCol : bearOB ? bearCol : na) : na)
+
+// ── Alerts ──────────────────────────────────────────────
+alertcondition(bullOB,      "Bullish Outside Bar",           "Bullish outside bar, dominant lower wick")
+alertcondition(bearOB,      "Bearish Outside Bar",           "Bearish outside bar, dominant upper wick")
+alertcondition(bullLowRsi,  "Bullish Outside Bar + RSI<mid", "Bullish outside bar with RSI below midline")
+alertcondition(bearHighRsi, "Bearish Outside Bar + RSI>mid", "Bearish outside bar with RSI above midline")
+
+if bullOB
+    alert("Bullish outside bar" + (bullLowRsi ? " (RSI<" + str.tostring(rsiMid) + ")" : "") + ": " + syminfo.ticker, alert.freq_once_per_bar_close)
+if bearOB
+    alert("Bearish outside bar" + (bearHighRsi ? " (RSI>" + str.tostring(rsiMid) + ")" : "") + ": " + syminfo.ticker, alert.freq_once_per_bar_close)

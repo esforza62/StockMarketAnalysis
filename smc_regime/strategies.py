@@ -355,6 +355,115 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def _outside_bar_signals(
+    df: pd.DataFrame,
+    wick_ratio: float,
+    min_body_pct: float,
+    require_body_engulf: bool,
+    allow_doji_prev: bool,
+) -> tuple[pd.Series, pd.Series]:
+    """Bullish/bearish "wick-filtered outside bar" masks -- a direct port of
+    the user's Pine indicator "Outside Bar Finder -- Wick Filtered + RSI".
+
+    An outside bar engulfs the prior bar's whole range (higher high AND
+    lower low). The wick filter is what makes it a reversal read rather
+    than just a volatility expansion: a bullish signal needs its LOWER
+    wick to dominate (sellers pushed price down and got rejected), a
+    bearish one its UPPER wick. The prior-candle filter requires the bar
+    being reversed to have actually been going the other way.
+    """
+    open_, high, low, close = df["Open"], df["High"], df["Low"], df["Close"]
+
+    rng = high - low
+    body = (close - open_).abs()
+    body_top = pd.concat([close, open_], axis=1).max(axis=1)
+    body_bot = pd.concat([close, open_], axis=1).min(axis=1)
+    up_wick = high - body_top
+    dn_wick = body_bot - low
+
+    outside = (high > high.shift(1)) & (low < low.shift(1))
+    body_ok = (rng > 0) & (body / rng.replace(0, pd.NA) >= min_body_pct)
+
+    prev_body_top = pd.concat([open_.shift(1), close.shift(1)], axis=1).max(axis=1)
+    prev_body_bot = pd.concat([open_.shift(1), close.shift(1)], axis=1).min(axis=1)
+    if require_body_engulf:
+        engulf_up = (close >= prev_body_top) & (open_ <= prev_body_bot)
+        engulf_dn = (open_ >= prev_body_top) & (close <= prev_body_bot)
+    else:
+        engulf_up = engulf_dn = pd.Series(True, index=df.index)
+
+    prev_bull = close.shift(1) > open_.shift(1)
+    prev_bear = close.shift(1) < open_.shift(1)
+    prev_flat = close.shift(1) == open_.shift(1)
+    prev_ok_bull = prev_bear | (prev_flat if allow_doji_prev else False)
+    prev_ok_bear = prev_bull | (prev_flat if allow_doji_prev else False)
+
+    bull = outside & (close > open_) & body_ok & engulf_up & prev_ok_bull & (dn_wick >= up_wick * wick_ratio) & (dn_wick > 0)
+    bear = outside & (close < open_) & body_ok & engulf_dn & prev_ok_bear & (up_wick >= dn_wick * wick_ratio) & (up_wick > 0)
+    return bull.fillna(False).astype(bool), bear.fillna(False).astype(bool)
+
+
+def outside_bar_reversal(
+    df: pd.DataFrame,
+    wick_ratio: float = 1.0,
+    min_body_pct: float = 0.0,
+    require_body_engulf: bool = False,
+    allow_doji_prev: bool = False,
+) -> pd.DataFrame:
+    """Long side only, and with an exit the source indicator doesn't define
+    -- both flagged rather than silently approximated, per the porting rule
+    in docs/ROADMAP.md.
+
+    The Pine original is an *indicator*: it marks bullish and bearish
+    wick-filtered outside bars and alerts on them, with no position, no
+    exit, and no stop. Two things therefore had to be decided here, not
+    ported:
+
+    - The bearish signal, which in the Pine script is a short entry, is
+      used as this long-only strategy's EXIT instead. That is the closest
+      faithful reading available in a single-position long-only engine
+      (the mirror signal is the pattern's own "the other side has taken
+      over" statement), but it is a choice, not the Pine's own behavior.
+    - The exit therefore has no guarantee of ever firing. Outside bars
+      with a dominant opposing wick are rare, so a long can sit open for
+      many months; the backtest harness only records closed trades, so
+      whatever never reverses simply never appears in the results.
+
+    Entry: bullish wick-filtered outside bar -- higher high and lower low
+    than the prior bar, closing up, after a DOWN bar, with a lower wick at
+    least wick_ratio times the upper wick.
+    Exit: the mirror bearish signal.
+    """
+    bull, bear = _outside_bar_signals(df, wick_ratio, min_body_pct, require_body_engulf, allow_doji_prev)
+    return pd.DataFrame({"entry": bull, "exit": bear})
+
+
+def outside_bar_rsi(
+    df: pd.DataFrame,
+    wick_ratio: float = 1.0,
+    min_body_pct: float = 0.0,
+    require_body_engulf: bool = False,
+    allow_doji_prev: bool = False,
+    rsi_window: int = 21,
+    midline: float = 50.0,
+) -> pd.DataFrame:
+    """outside_bar_reversal gated by the Pine script's RSI colour rule: only
+    take the bullish outside bar when RSI(21) is still BELOW its midline --
+    the "bullish + RSI below mid" highlight colour in the original, i.e. a
+    reversal signal firing while momentum is still washed out rather than
+    one firing into an already-extended move.
+
+    Same exit as outside_bar_reversal (the mirror bearish signal), with the
+    same caveat that the Pine defines no exit at all. Registered alongside
+    the unfiltered version specifically so the RSI gate's contribution is
+    measurable rather than assumed: the indicator draws the distinction in
+    colour but never tested whether it pays.
+    """
+    bull, bear = _outside_bar_signals(df, wick_ratio, min_body_pct, require_body_engulf, allow_doji_prev)
+    r = ind.rsi(df["Close"], rsi_window)
+    return pd.DataFrame({"entry": bull & (r < midline), "exit": bear})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -375,4 +484,6 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "outside_bar": outside_bar_reversal,
+    "outside_bar_rsi": outside_bar_rsi,
 }

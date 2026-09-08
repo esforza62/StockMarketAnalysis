@@ -593,6 +593,90 @@ def compute_setup_score(
     }
 
 
+def score_ticker(
+    *,
+    ticker: str,
+    sector: str,
+    industry: str,
+    regime: str,
+    direction: str,
+    streak_bars: int,
+    snapshot: dict,
+    daily_row=None,
+    weekly_row=None,
+    sector_counts: dict | None = None,
+    industry_counts: dict | None = None,
+    valuation: tuple | None = None,
+    valuation_missing_detail: str = "no valuation data yet for this ticker",
+    best: dict | None = None,
+) -> dict:
+    """Score one ticker from already-gathered inputs.
+
+    Split out of compute_universe_setup_scores() so the historical
+    backfill (grade_backfill.py) grades a past date through exactly this
+    code rather than a parallel copy of the weighting that would silently
+    drift from the live one.
+
+    Every input is optional in the sense that a missing one falls back to
+    its component's half credit -- the same "absent evidence is not
+    evidence against" rule used for missing peer data. `valuation=None`
+    means no P/E pair was available at all; `valuation_missing_detail` lets
+    the caller say WHY, since "not fetched yet" and "not reconstructible
+    for a past date" are different claims and the report needs to tell them
+    apart.
+
+    `best` only ever reaches _strategy_info(), which is reported and scores
+    zero -- so a caller with no trade history (the backfill) can leave it
+    None without affecting the grade.
+    """
+    tech = _technical_components(snapshot, regime)
+    streak_pts = _streak_points(int(streak_bars))
+
+    if daily_row is not None and weekly_row is not None:
+        align_pts, align_detail = _alignment_points(daily_row, weekly_row)
+    else:
+        align_pts, align_detail = _ALIGNMENT_MAX / 2, "missing daily or weekly snapshot data, assumed neutral"
+
+    daily_direction = daily_row["direction"] if daily_row is not None else direction
+    sec_ind_pts, sec_ind_detail = _sector_industry_points(
+        daily_direction, sector, industry, sector_counts or {}, industry_counts or {}
+    )
+
+    if valuation is not None:
+        val_pts, val_detail = _valuation_points(valuation[0], valuation[1])
+    else:
+        val_pts, val_detail = _VALUATION_MAX / 2, valuation_missing_detail
+
+    total = sum(pts for pts, _, _ in tech.values()) + streak_pts + align_pts + sec_ind_pts + val_pts
+    row = {
+        "ticker": ticker,
+        "sector": sector,
+        "industry": industry,
+        "regime": regime,
+        "direction": direction,
+        "grade": _grade(total),
+        "total_points": round(total, 1),
+        "borderline": _borderline(round(total, 1)),
+        "streak_points": round(streak_pts, 1),
+        "streak_bars": int(streak_bars),
+        "alignment_points": round(align_pts, 1),
+        "alignment_detail": align_detail,
+        "sector_industry_points": round(sec_ind_pts, 1),
+        "sector_industry_detail": sec_ind_detail,
+        "valuation_points": round(val_pts, 1),
+        "valuation_detail": val_detail,
+        "strategy_info": _strategy_info(best),
+        # Reported, not scored -- how a name has already moved is context
+        # for reading the setup, not part of judging it.
+        "return_1w": snapshot.get("return_1w"),
+        "return_1m": snapshot.get("return_1m"),
+    }
+    for name, (pts, _, detail) in tech.items():
+        row[f"{name}_points"] = round(pts, 1)
+        row[f"{name}_detail"] = detail
+    return row
+
+
 def compute_universe_setup_scores(
     db_path: str = str(db_module.DEFAULT_DB_PATH),
     interval: str = "1d",
@@ -639,53 +723,32 @@ def compute_universe_setup_scores(
             snapshot = {k: (None if pd.isna(v) else v) for k, v in technicals_by_ticker.loc[ticker].items()}
         else:
             snapshot = {}
-        tech = _technical_components(snapshot, r["regime"])
-        streak_pts = _streak_points(int(r["streak_bars"]))
-
         d_row = daily_by_ticker.loc[ticker] if daily_by_ticker is not None and ticker in daily_by_ticker.index else None
         w_row = weekly_by_ticker.loc[ticker] if weekly_by_ticker is not None and ticker in weekly_by_ticker.index else None
-        if d_row is not None and w_row is not None:
-            align_pts, align_detail = _alignment_points(d_row, w_row)
-        else:
-            align_pts, align_detail = _ALIGNMENT_MAX / 2, "missing daily or weekly snapshot data, assumed neutral"
-
-        daily_direction = d_row["direction"] if d_row is not None else r["direction"]
-        sec_ind_pts, sec_ind_detail = _sector_industry_points(daily_direction, sector, industry, sector_counts, industry_counts)
 
         if ticker in valuation_by_ticker.index:
             v_row = valuation_by_ticker.loc[ticker]
-            val_pts, val_detail = _valuation_points(v_row["trailing_pe"], v_row["forward_pe"])
+            valuation = (v_row["trailing_pe"], v_row["forward_pe"])
         else:
-            val_pts, val_detail = _VALUATION_MAX / 2, "no valuation data yet for this ticker"
+            valuation = None
 
-        total = sum(pts for pts, _, _ in tech.values()) + streak_pts + align_pts + sec_ind_pts + val_pts
-        row = {
-            "ticker": ticker,
-            "sector": sector,
-            "industry": industry,
-            "regime": r["regime"],
-            "direction": r["direction"],
-            "grade": _grade(total),
-            "total_points": round(total, 1),
-            "borderline": _borderline(round(total, 1)),
-            "streak_points": round(streak_pts, 1),
-            "streak_bars": int(r["streak_bars"]),
-            "alignment_points": round(align_pts, 1),
-            "alignment_detail": align_detail,
-            "sector_industry_points": round(sec_ind_pts, 1),
-            "sector_industry_detail": sec_ind_detail,
-            "valuation_points": round(val_pts, 1),
-            "valuation_detail": val_detail,
-            "strategy_info": _strategy_info(best),
-            # Reported, not scored -- how a name has already moved is context
-            # for reading the setup, not part of judging it.
-            "return_1w": snapshot.get("return_1w"),
-            "return_1m": snapshot.get("return_1m"),
-        }
-        for name, (pts, _, detail) in tech.items():
-            row[f"{name}_points"] = round(pts, 1)
-            row[f"{name}_detail"] = detail
-        rows.append(row)
+        rows.append(
+            score_ticker(
+                ticker=ticker,
+                sector=sector,
+                industry=industry,
+                regime=r["regime"],
+                direction=r["direction"],
+                streak_bars=int(r["streak_bars"]),
+                snapshot=snapshot,
+                daily_row=d_row,
+                weekly_row=w_row,
+                sector_counts=sector_counts,
+                industry_counts=industry_counts,
+                valuation=valuation,
+                best=best,
+            )
+        )
 
     conn.close()
     return pd.DataFrame(rows).sort_values("total_points", ascending=False).reset_index(drop=True)

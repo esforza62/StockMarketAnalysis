@@ -6,3 +6,7 @@ __pycache__/
 # would grow repo history by ~one full copy per day forever. Published
 # as a release asset instead -- see smc_regime/fetch_db.py.
 backtest_logs/smc_regime.db
+
+# Cached price bars from smc_regime.grade_backfill -- re-fetchable, and
+# one full daily history per tracked ticker.
+.cache/

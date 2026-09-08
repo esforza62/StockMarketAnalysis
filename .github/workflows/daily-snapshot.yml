@@ -40,6 +40,16 @@ jobs:
           TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: python -m smc_regime.daily_snapshot --intervals 1d,1h,1w,15m --start-date 2019-01-01 --rolling-intervals 15m
 
+      # Grades were previously derived at export time and existed only
+      # inside the published dashboard, so there was no way to ask what a
+      # ticker scored last week or whether the A names went on to
+      # outperform. This appends tonight's grades to a committed history --
+      # its own step, not part of daily_snapshot, so a failure here is
+      # visible on its own and leaves the snapshot and the published
+      # database intact. See smc_regime/grade_report.py for reading it back.
+      - name: Capture setup grades
+        run: python -m smc_regime.capture_grades --interval 1d
+
       # backtest_logs/smc_regime.db is rewritten in full every run and
       # doesn't diff well as a git blob -- committing it directly would
       # grow repo history by ~one full copy per day and risks hitting
@@ -62,7 +72,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add backtest_logs/regime_strategy_log.jsonl smc_regime/data/exchange_cache.json
+          git add backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl smc_regime/data/exchange_cache.json
           git diff --cached --quiet && exit 0
 
           git commit -m "Daily regime-strategy snapshot for $(date -u +%Y-%m-%d)"
@@ -72,7 +82,27 @@ jobs:
             fi
             echo "push rejected (attempt $attempt), rebasing onto latest remote..."
             git fetch origin "${GITHUB_REF_NAME}"
-            git rebase "origin/${GITHUB_REF_NAME}"
+
+            # Two snapshot runs overlapping -- a dispatched one still
+            # backtesting while the nightly one pushes -- both append to the
+            # log after the same ancestor. That used to conflict on every
+            # appended line, and since this step runs under `bash -e` the
+            # failed rebase killed the push outright, silently dropping a
+            # run's records. `merge=union` (.gitattributes) keeps both sides;
+            # the normalize steps below then restore order and drop duplicates
+            # in the snapshot log and the grade history alike.
+            if ! git rebase "origin/${GITHUB_REF_NAME}"; then
+              git rebase --abort || true
+              echo "::error::rebase onto origin/${GITHUB_REF_NAME} conflicted outside the union-merged log; resolve by hand"
+              exit 1
+            fi
+            python -m smc_regime.normalize_log
+            python -m smc_regime.grade_history
+            LOGS="backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl"
+            if ! git diff --quiet -- $LOGS; then
+              git add $LOGS
+              git commit --amend --no-edit
+            fi
             sleep $((attempt * 5))
           done
           git push

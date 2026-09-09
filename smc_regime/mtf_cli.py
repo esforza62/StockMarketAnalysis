@@ -24,6 +24,13 @@ import pandas as pd
 from . import patterns as pat
 from . import timeframes as tf
 from .backtest import run_backtest
+from .split_guard import (
+    UNADJUSTED_INTERVALS,
+    filter_contaminated_trades,
+    filter_discontinuity_trades,
+    load_split_cache,
+    price_discontinuities,
+)
 from .strategies import sweep_outside_reversal
 
 
@@ -37,8 +44,24 @@ def _fetch(ticker: str, source: str, interval: str, start_date: str) -> pd.DataF
     return fetch_ohlcv(ticker, interval=interval, start_date=start_date)
 
 
-def agreement_table(df: pd.DataFrame, rules: tuple[str, ...] = tf.LADDER, detector=pat.bar_direction) -> pd.DataFrame:
-    """One row per "how many higher rungs were bullish at entry" bucket."""
+def agreement_table(
+    df: pd.DataFrame,
+    rules: tuple[str, ...] = tf.LADDER,
+    detector=pat.bar_direction,
+    ticker: str = "",
+    interval: str = "",
+) -> pd.DataFrame:
+    """One row per "how many higher rungs were bullish at entry" bucket.
+
+    Split-guarded on unadjusted intervals, the same way collect_trades is.
+    Every intraday source here is raw -- Tiingo's IEX endpoint has no
+    adjusted fields and Yahoo serves no adjclose for intraday -- so a trade
+    straddling a split shows a fabricated return. Not a rounding issue: one
+    contaminated BNY trade in a 2,690-trade sample carried a +1283% "return"
+    and, sitting alone in the zero-rungs bucket, made no-agreement look like
+    the best bucket in the table. Its standard deviation (37.8 against ~5
+    elsewhere) was the only visible symptom.
+    """
     signals = sweep_outside_reversal(df)
     ladder = tf.ladder_state(df, rules=rules, detector=detector)
     trades = run_backtest(df, signals)
@@ -49,11 +72,22 @@ def agreement_table(df: pd.DataFrame, rules: tuple[str, ...] = tf.LADDER, detect
         {
             "rungs_agreeing": int(ladder.loc[t.entry_date, "rungs_bullish"]),
             "return_pct": t.return_pct,
+            "entry_date": t.entry_date,
+            "exit_date": t.exit_date,
         }
         for t in trades
         if t.entry_date in ladder.index
     ]
     tagged = pd.DataFrame(rows)
+    if interval.lower() in UNADJUSTED_INTERVALS:
+        tagged["ticker"] = ticker
+        before = len(tagged)
+        tagged = filter_contaminated_trades(tagged, load_split_cache())
+        tagged = filter_discontinuity_trades(tagged, price_discontinuities(df))
+        if len(tagged) < before:
+            print(f"  dropped {before - len(tagged)} trade(s) straddling a split or price discontinuity")
+        if tagged.empty:
+            return pd.DataFrame()
     return (
         tagged.groupby("rungs_agreeing")["return_pct"]
         .agg(trades="count", win_rate=lambda r: (r > 0).mean() * 100, avg_return_pct="mean")
@@ -92,7 +126,7 @@ def main() -> None:
                 f"source bars/bar {int(htf['source_bars'].min())}-{int(htf['source_bars'].max())}"
             )
 
-        table = agreement_table(df, rules, detector)
+        table = agreement_table(df, rules, detector, ticker=ticker, interval=args.interval)
         if table.empty:
             print("  no trades")
             continue

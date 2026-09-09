@@ -265,3 +265,65 @@ not a strategy that is known to pay.
 - `outside_bar_rsi(midline=...)` takes the tighter band directly; the bear
   side that the > 55 result belongs to still needs a short-capable engine,
   which remains the open decision from the first pass.
+
+
+# What the colour tiers actually flag
+
+Clarification from the user, and it inverts the framing of everything above:
+the RSI tiers in the indicator are **warnings, not confirmation**. A bearish
+engulfer printing while RSI is still above the midline is coloured to say
+*this is probably a false reading*; a bullish one below the midline likewise.
+
+That is a question about **separation**, not about each tier's own edge: does
+the flagged group behave differently from the unflagged group of the same
+signal? Tested as a contrast (flagged minus unflagged), clustered by calendar
+month, with the sign flipped on bearish signals so that positive always means
+"the signal's own direction was right".
+
+If the flag is doing its job, the difference should be **negative** — the
+flagged group should be the worse one.
+
+| flag | 3 bars | 5 bars | 10 bars | 20 bars | 60 bars |
+|---|---|---|---|---|---|
+| bear, RSI > 50 | +0.10 (t 2.1) | +0.14 (t 2.2) | +0.60 (t 3.8) | +0.95 (t 3.3) | +2.37 (t 3.7) |
+| **bear, RSI > 55** | **+0.11 (t 2.6)** | +0.15 (t 2.2) | +0.35 (t 2.7) | +0.52 (t 3.2) | **+2.11 (t 4.4)** |
+| bear, RSI > 60 | −0.07 (t 1.9) | −0.17 (t 1.2) | −0.02 (t 1.5) | +0.09 (t 1.6) | +0.91 (t 1.7) |
+| bear, RSI > 65 | −0.14 (t 0.7) | −0.48 (t −0.3) | −0.55 (t −0.9) | −0.60 (t −1.0) | +1.09 (t −0.1) |
+| bull, RSI < 45 | +0.19 (t 3.1) | −0.10 (t 2.0) | −0.52 (t 1.3) | +0.40 (t 0.6) | −0.13 (t −0.2) |
+| bull, RSI < 50 | +0.12 (t 2.7) | −0.04 (t 2.4) | −0.18 (t 2.5) | +0.59 (t 1.6) | +1.40 (t 1.6) |
+
+**The bearish flag is backwards.** Bearish engulfers with RSI above 55 are not
+the false ones — they are significantly the *better* ones, at every horizon
+from three bars out, and the gap widens with time (+2.11% by 60 bars, t = 4.4
+clustered by month). Skipping them means skipping the subset that works.
+
+**Except at RSI > 65, where the instinct has a basis.** That group's path is
+the interesting one:
+
+| horizon | 1 | 3 | 5 | 10 | 20 | 40 | 60 |
+|---|---|---|---|---|---|---|---|
+| bear signals, RSI > 65 | +0.09 | −0.23 | −0.51 | −0.71 | −0.22 | +0.89 | +1.88 |
+| bear signals, RSI ≤ 65 | +0.03 | −0.09 | −0.04 | −0.16 | +0.38 | +0.69 | +0.79 |
+
+Those go the *wrong way for about a month* — price keeps rising after the
+signal, worst around 10 bars — and then resolve downward hard. If the
+experience behind the colour is "I take this one and it immediately runs
+against me", that is real and visible in the data. But it is 511 signals and
+none of those short-horizon differences are significant (t between −0.3 and
+−1.0), so it is a hypothesis worth watching, not a finding. It also means the
+tier is mistimed rather than wrong: the signal is early, not false.
+
+**The bullish flag does not separate anything.** RSI < 45 signals do slightly
+*better* than the rest at 2–3 bars (t ≈ 3), slightly worse at 10, and nothing
+consistent after. More to the point, both groups are net negative — flagged
+−0.38% at 5 bars, unflagged −0.28% — so there is no good tier for the flag to
+protect. The bullish engulfer is weak everywhere on this data, and RSI is not
+the variable that splits it.
+
+## Practical read
+
+- Keep the bear > 55 tier, invert what it means: attention, not suspicion.
+- Consider a separate tier at RSI > 65 for "right idea, early" — that is where
+  the false-reading experience actually lives, and it is a timing warning
+  rather than an invalidation.
+- The bullish tier is not earning its place as a filter either way.

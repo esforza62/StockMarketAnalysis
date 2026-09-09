@@ -83,6 +83,17 @@ print(summarize_by_regime(trades))
 
 All strategies are long-only, single-position, defined in `smc_regime.strategies.STRATEGIES`.
 
+Most are indicator-driven. `sweep_outside` is the exception: it reads bar
+structure directly, entering on either a three-bar sweep-and-reclaim (two
+red candles, the second sweeping the first's low on a long lower wick, then
+a close back above the first's high) or a bullish outside bar, and exiting
+on either pattern's bearish mirror. Detectors live in
+`smc_regime.patterns`. Note that bar-shape patterns are interval-specific
+by nature -- most 15m patterns are invisible on 1h, and re-anchoring the
+same data to a shifted 1h grid keeps only about half the signals -- so read
+each interval's results on their own; see that module's docstring for the
+measurements.
+
 ### Daily snapshot + recommendations
 
 `smc_regime.daily_snapshot` runs the regime-conditioned backtest across a

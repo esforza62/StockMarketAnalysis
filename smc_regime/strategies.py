@@ -10,6 +10,7 @@ from __future__ import annotations
 import pandas as pd
 
 from . import indicators as ind
+from . import patterns as pat
 
 
 def rsi_mean_reversion(df: pd.DataFrame, window: int = 14, oversold: float = 30.0, overbought: float = 70.0) -> pd.DataFrame:
@@ -355,6 +356,54 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def sweep_outside_reversal(
+    df: pd.DataFrame,
+    wick_body_mult: float = 2.0,
+    wick_range_frac: float = 0.5,
+    require_sweep: bool = True,
+    atr_window: int = 14,
+    min_range_atr: float = 0.5,
+    require_close_beyond: bool = True,
+) -> pd.DataFrame:
+    """Price-structure reversal on either of two patterns firing -- the
+    first strategy here driven by bar structure rather than an indicator.
+
+    Entry: EITHER a bullish three-bar sweep-and-reclaim (two red candles,
+    the second sweeping the first's low with a long lower wick, then a
+    close back above the first's high) OR a bullish outside bar (range
+    engulfs the prior bar, close beyond its high). Both are the same read
+    -- a level was taken, rejected, and reclaimed on the close -- over
+    three bars and two respectively, so OR-ing them widens coverage of one
+    idea rather than mixing two.
+    Exit: either pattern's bearish mirror.
+
+    Long only, like every strategy here: the bearish patterns are the exit,
+    not a short entry. The short side is a genuinely useful signal this
+    throws away -- the same reason rsi_dip_recovery notes for dropping its
+    own -- but taking it needs backtest.py's single-position long-only loop
+    extended to short entries, stops above entry, and same-bar reversal (a
+    stop-and-reverse strategy goes flat and loses the signal otherwise),
+    which is an engine change, not a strategy one.
+
+    No trend filter, deliberately -- see patterns.py's module docstring:
+    regime tagging downstream is what answers "which regime does this work
+    in," and a filter here would answer it by construction.
+    """
+    sweep = pat.sweep_reclaim(
+        df,
+        wick_body_mult=wick_body_mult,
+        wick_range_frac=wick_range_frac,
+        require_sweep=require_sweep,
+        atr_window=atr_window,
+        min_range_atr=min_range_atr,
+    )
+    outside = pat.outside_bar(df, require_close_beyond=require_close_beyond)
+
+    entry = sweep["bullish"] | outside["bullish"]
+    exit_ = sweep["bearish"] | outside["bearish"]
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -375,4 +424,5 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "sweep_outside": sweep_outside_reversal,
 }

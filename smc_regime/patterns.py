@@ -57,6 +57,46 @@ def _parts(df: pd.DataFrame) -> dict[str, pd.Series]:
     }
 
 
+def _has_intraday_structure(index: pd.DatetimeIndex) -> bool:
+    """More than one bar on some day -- i.e. time-of-day means something.
+
+    Guards slot grouping against daily series, which are not all stamped at
+    a constant time: Yahoo stamps a daily bar at the session OPEN in UTC, so
+    a DST change splits one series into 13:30 and 14:30 slots and the "one
+    slot per series" assumption quietly breaks. Caught as a real drift in
+    SPY's daily backtest, not in theory.
+    """
+    if len(index) < 2:
+        return False
+    return len(index) > len(set((index.tz_convert("UTC") if index.tz is not None else index).date))
+
+
+def slot_atr(df: pd.DataFrame, window: int = 14, slot_normalized: bool = True) -> pd.Series:
+    """ATR baseline for "is this bar big enough to mean anything".
+
+    With slot_normalized, the average is taken within each time-of-day slot
+    rather than across the whole series: a 09:30 bar is compared against
+    other 09:30 bars. Intraday ranges are strongly slot-dependent -- AAPL's
+    opening 4h bar averages roughly twice the range of its afternoon one,
+    and that gap survives equalising the bar durations (see timeframes.py
+    for the measurements) -- so a single blended ATR quietly makes every
+    threshold easier to clear at the open and harder mid-session.
+
+    True range itself is still computed against the immediately preceding
+    bar, whatever slot that was: the overnight or lunchtime gap is real
+    price movement and belongs in the range. Only the AVERAGING is grouped.
+
+    On a daily series every bar shares one slot, so this is exactly
+    indicators.atr and nothing changes.
+    """
+    tr = ind.true_range(df)
+    if not slot_normalized or not _has_intraday_structure(df.index):
+        return tr.ewm(alpha=1 / window, adjust=False).mean()
+    return tr.groupby(df.index.time).transform(
+        lambda slot: slot.ewm(alpha=1 / window, adjust=False).mean()
+    )
+
+
 def sweep_reclaim(
     df: pd.DataFrame,
     wick_body_mult: float = 2.0,
@@ -64,6 +104,7 @@ def sweep_reclaim(
     require_sweep: bool = True,
     atr_window: int = 14,
     min_range_atr: float = 0.5,
+    slot_normalized_atr: bool = True,
 ) -> pd.DataFrame:
     """Three-bar sweep-and-reclaim reversal.
 
@@ -88,7 +129,9 @@ def sweep_reclaim(
     min_range_atr keeps the wick tests from qualifying a bar so small that
     its "long wick" is a couple of ticks of noise: the second candle's own
     high-low range must be at least this many ATRs. Bars before the ATR
-    warmup completes are NaN and therefore never qualify.
+    warmup completes are NaN and therefore never qualify. That baseline is
+    per-time-of-day by default -- see slot_atr for why a blended one
+    biases intraday detection toward the open.
 
     Bearish is the exact mirror: two green candles, the second with a long
     upper wick sweeping above the first's high, then a close below the
@@ -96,7 +139,7 @@ def sweep_reclaim(
     """
     open_, high, low, close = df["Open"], df["High"], df["Low"], df["Close"]
     parts = _parts(df)
-    atr = ind.atr(df, atr_window)
+    atr = slot_atr(df, atr_window, slot_normalized=slot_normalized_atr)
 
     # c1 is two bars back, c2 one bar back, c3 the bar being evaluated --
     # the signal is only known at c3's close, so nothing here reads ahead.
@@ -162,6 +205,54 @@ def outside_bar(df: pd.DataFrame, require_close_beyond: bool = True) -> pd.DataF
         bullish = engulfs & (close > open_)
         bearish = engulfs & (close < open_)
 
+    return pd.DataFrame(
+        {"bullish": bullish.fillna(False), "bearish": bearish.fillna(False)},
+        index=df.index,
+    )
+
+
+def reversal_signals(df: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    """Either pattern firing, as one bullish/bearish pair.
+
+    The single definition of "this module says the tape reversed here",
+    shared by the strategy and by the higher-timeframe ladder in
+    timeframes.py, so a rung can never be reading a different rule than the
+    base interval is.
+
+    Keyword arguments are split by name between the two detectors, so a
+    caller can tune either without knowing which one owns which threshold.
+    """
+    outside_kwargs = {k: kwargs.pop(k) for k in ("require_close_beyond",) if k in kwargs}
+    sweep = sweep_reclaim(df, **kwargs)
+    outside = outside_bar(df, **outside_kwargs)
+    return pd.DataFrame(
+        {
+            "bullish": sweep["bullish"] | outside["bullish"],
+            "bearish": sweep["bearish"] | outside["bearish"],
+        },
+        index=df.index,
+    )
+
+
+def bar_direction(df: pd.DataFrame) -> pd.DataFrame:
+    """Which way a bar resolved -- the dense read, for higher-timeframe context.
+
+    Bullish when the bar closed above its own open AND above the previous
+    bar's close: it went up, and it went up from where the last one left
+    off. The second half is what stops a green bar inside a decline from
+    reading as bullish context.
+
+    This exists because reversal_signals is the wrong tool for a
+    confluence question. A three-bar reversal fires on a small percentage
+    of bars, so asking "did the 4h ALSO print the pattern" answers "no"
+    almost always and splits trades into one huge bucket and one empty
+    one. "Which way is the 4h currently pointing" is both what a trader
+    means by higher-timeframe agreement and dense enough to measure
+    against.
+    """
+    close, open_ = df["Close"], df["Open"]
+    bullish = (close > open_) & (close > close.shift(1))
+    bearish = (close < open_) & (close < close.shift(1))
     return pd.DataFrame(
         {"bullish": bullish.fillna(False), "bearish": bearish.fillna(False)},
         index=df.index,

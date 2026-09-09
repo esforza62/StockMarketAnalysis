@@ -48,7 +48,7 @@ _YAHOO_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
-def fetch_yahoo_ohlcv(ticker: str, start_date: str = "2019-01-01") -> pd.DataFrame:
+def fetch_yahoo_ohlcv(ticker: str, start_date: str = "2019-01-01", interval: str = "1d") -> pd.DataFrame:
     """Daily OHLCV from Yahoo's chart API, adjusted for splits/dividends.
 
     Yahoo returns raw OHLC plus a separate `adjclose` series (adjusted close
@@ -57,12 +57,19 @@ def fetch_yahoo_ohlcv(ticker: str, start_date: str = "2019-01-01") -> pd.DataFra
     while making it comparable to Tiingo's adjClose -- the field this
     system's own data.py should also be using (see the known raw-close bug
     this cross-check helps confirm the scope of).
+
+    `interval` also accepts Yahoo's intraday aliases ("15m", "1h"), which
+    smc_regime.mtf_cli uses to get a ladder's base series without a Tiingo
+    key. Yahoo serves no adjclose for intraday, so those bars come back
+    unadjusted -- acceptable over the ~60 days of intraday history it
+    offers, but it is why this stays a research/cross-check path and not a
+    production data source.
     """
     period1 = int(pd.Timestamp(start_date, tz="UTC").timestamp())
     period2 = int(pd.Timestamp.now(tz="UTC").timestamp())
     resp = requests.get(
         _YAHOO_URL.format(ticker=ticker),
-        params={"period1": period1, "period2": period2, "interval": "1d", "events": "div,splits"},
+        params={"period1": period1, "period2": period2, "interval": interval, "events": "div,splits"},
         headers=_HEADERS,
         timeout=20,
     )
@@ -74,7 +81,7 @@ def fetch_yahoo_ohlcv(ticker: str, start_date: str = "2019-01-01") -> pd.DataFra
 
     timestamps = result["timestamp"]
     quote = result["indicators"]["quote"][0]
-    adjclose = result["indicators"]["adjclose"][0]["adjclose"]
+    adjusted = result["indicators"].get("adjclose")
 
     df = pd.DataFrame(
         {
@@ -83,14 +90,17 @@ def fetch_yahoo_ohlcv(ticker: str, start_date: str = "2019-01-01") -> pd.DataFra
             "Low": quote["low"],
             "Close": quote["close"],
             "Volume": quote["volume"],
-            "AdjClose": adjclose,
         },
         index=pd.to_datetime(timestamps, unit="s", utc=True),
-    ).dropna(subset=["Close", "AdjClose"])
-
-    ratio = df["AdjClose"] / df["Close"]
-    for col in ["Open", "High", "Low", "Close"]:
-        df[col] = df[col] * ratio
+    )
+    if adjusted:
+        df["AdjClose"] = adjusted[0]["adjclose"]
+        df = df.dropna(subset=["Close", "AdjClose"])
+        ratio = df["AdjClose"] / df["Close"]
+        for col in ["Open", "High", "Low", "Close"]:
+            df[col] = df[col] * ratio
+    else:
+        df = df.dropna(subset=["Close"])
     return df[["Open", "High", "Low", "Close", "Volume"]]
 
 

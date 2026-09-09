@@ -94,6 +94,28 @@ same data to a shifted 1h grid keeps only about half the signals -- so read
 each interval's results on their own; see that module's docstring for the
 measurements.
 
+### Timeframe ladder
+
+`smc_regime.timeframes` builds the 15m -> 1h -> 4h -> 1d ladder by
+aggregating upward from the base interval, session by session, anchored to
+each session's open. A 390-minute RTH session doesn't divide evenly, so the
+higher rungs are ragged (1h leaves a 30-minute stub, "4h" is really 4h then
+2.5h) -- kept that way deliberately, because it's what a charting platform
+draws. Every rung is aligned to the base series by when its bar *closed*, so
+a signal never reads a higher-timeframe bar it is still inside.
+
+Higher timeframes are reported, not enforced. `smc_regime.mtf_cli` splits
+trade outcomes by how many rungs agreed at entry:
+
+```bash
+python -m smc_regime.mtf_cli AAPL NVDA --interval 15m --source yahoo
+```
+
+Bar range is strongly time-of-day dependent (an opening bar averages ~2x a
+midday one, and that survives equalising bar durations), so ATR-relative
+thresholds use a per-slot baseline on intraday data -- `patterns.slot_atr`,
+a no-op on daily bars.
+
 ### Daily snapshot + recommendations
 
 `smc_regime.daily_snapshot` runs the regime-conditioned backtest across a

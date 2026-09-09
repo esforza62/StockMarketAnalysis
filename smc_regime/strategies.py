@@ -363,6 +363,7 @@ def sweep_outside_reversal(
     require_sweep: bool = True,
     atr_window: int = 14,
     min_range_atr: float = 0.5,
+    slot_normalized_atr: bool = True,
     require_close_beyond: bool = True,
 ) -> pd.DataFrame:
     """Price-structure reversal on either of two patterns firing -- the
@@ -387,21 +388,29 @@ def sweep_outside_reversal(
 
     No trend filter, deliberately -- see patterns.py's module docstring:
     regime tagging downstream is what answers "which regime does this work
-    in," and a filter here would answer it by construction.
+    in," and a filter here would answer it by construction. Higher
+    timeframes are treated the same way: smc_regime.timeframes builds the
+    15m/1h/4h/1d ladder and smc_regime.mtf_cli reports outcomes split by
+    how many rungs agreed, rather than this function gating on agreement
+    that has not been shown to help yet.
+
+    Signal thresholds are ATR-relative against a per-time-of-day baseline
+    (patterns.slot_atr), which matters on any intraday interval and is a
+    no-op on daily bars.
     """
-    sweep = pat.sweep_reclaim(
+    signals = pat.reversal_signals(
         df,
         wick_body_mult=wick_body_mult,
         wick_range_frac=wick_range_frac,
         require_sweep=require_sweep,
         atr_window=atr_window,
         min_range_atr=min_range_atr,
+        slot_normalized_atr=slot_normalized_atr,
+        require_close_beyond=require_close_beyond,
     )
-    outside = pat.outside_bar(df, require_close_beyond=require_close_beyond)
-
-    entry = sweep["bullish"] | outside["bullish"]
-    exit_ = sweep["bearish"] | outside["bearish"]
-    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+    return pd.DataFrame(
+        {"entry": signals["bullish"].fillna(False), "exit": signals["bearish"].fillna(False)}
+    )
 
 
 STRATEGIES = {

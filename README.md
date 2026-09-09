@@ -151,6 +151,11 @@ in an uptrend makes it better. Waiting instead for RSI itself to cross back
 through a threshold arrives too late to pay -- unless it arrives while price
 is still near the signal bar, which is what `engulfer_rsi_confirmed` tests.
 
+`pinescript/outside_bar_tested_signals.pine` puts all of those rules on one
+TradingView chart as a strategy, so they can be reviewed by eye and re-run in
+the Strategy Tester -- including the short side, which the Python engine
+cannot trade, and with commission and slippage, which it does not model.
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

@@ -1,0 +1,218 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=6
+// Outside Bar / Divergence -- Tested Signals
+//
+// Every rule tested against 411 tickers x 5 years of daily bars in
+// docs/OUTSIDE_BAR_RSI.md, put on one chart so the findings can be reviewed
+// by eye and re-run in TradingView's own Strategy Tester.
+//
+// Two things this can do that the Python harness cannot:
+//   * trade the SHORT side, where most of the measured edge turned out to be
+//     (smc_regime's backtest engine is single-position long-only);
+//   * apply commission and slippage, which the Python harness models nowhere
+//     -- set them in Properties, since a 0.24%/trade gross edge on a 5-bar
+//     hold does not survive a 20bp round trip.
+//
+// Entries fill at the signal bar's CLOSE (process_orders_on_close = true) to
+// match how the Python backtest measured them. Exits are fixed-bar holds,
+// again matching what was measured -- the mirror-signal exits scored worse.
+//
+// Measured results are in the on-chart table. Expect TradingView's numbers to
+// differ: this runs one symbol, the study pooled 411, and the study's headline
+// figure is excess return over random entry timing on the same ticker, which
+// a Strategy Tester does not compute.
+strategy("Outside Bar / Divergence -- Tested Signals", overlay = true,
+     process_orders_on_close = true, initial_capital = 10000,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     pyramiding = 0, calc_on_every_tick = false, max_bars_back = 300)
+
+// ── What to trade ───────────────────────────────────────
+MODE_MACD   = "MACD divergence, 10-bar hold (long)  [best measured]"
+MODE_RSIDIV = "RSI divergence, 5-bar hold (long)"
+MODE_CONF   = "Bullish engulfer + capped RSI confirm, 20-bar hold (long)"
+MODE_BULLOB = "Bullish engulfer, raw, 10-bar hold (long)  [measured NEGATIVE]"
+MODE_BEAR55 = "Bearish engulfer + RSI>55, 60-bar hold (short)"
+MODE_BEARST = "Bearish engulfer + RSI div + 1 down candle, 60-bar hold (short)"
+MODE_NONE   = "Signals only, no trades"
+
+mode = input.string(MODE_MACD, "Rule to trade", group = "What to trade",
+     options = [MODE_MACD, MODE_RSIDIV, MODE_CONF, MODE_BULLOB, MODE_BEAR55, MODE_BEARST, MODE_NONE])
+holdOverride = input.int(0, "Hold bars (0 = the measured default for the rule)", minval = 0, group = "What to trade")
+
+// ── Pattern inputs (same as the original indicator) ─────
+wickRatio     = input.float(1.0,  "Min dominant/opposing wick ratio", minval = 1.0, step = 0.1, group = "Engulfing pattern")
+reqBodyEngulf = input.bool(false, "Require body engulfing (not just range)",       group = "Engulfing pattern")
+minBodyPct    = input.float(0.0,  "Min body as % of range", minval = 0, maxval = 100, step = 5, group = "Engulfing pattern") / 100
+allowDojiPrev = input.bool(false, "Allow flat/doji previous candle",               group = "Engulfing pattern")
+
+rsiLen    = input.int(21,  "RSI length",                minval = 1,  group = "Oscillators")
+divLookbk = input.int(20,  "Divergence lookback (bars)", minval = 5, group = "Oscillators")
+macdFast  = input.int(12,  "MACD fast",  minval = 1, group = "Oscillators")
+macdSlow  = input.int(26,  "MACD slow",  minval = 1, group = "Oscillators")
+macdSig   = input.int(9,   "MACD signal", minval = 1, group = "Oscillators")
+
+// The confirmation rule, in the form that measured best: a shallow trigger
+// (the midline, not 55) and a cap on how far price may already have run.
+confSignalRsi = input.float(50, "Confirm rule: max RSI at the engulfer",   minval = 1, maxval = 99, group = "RSI confirmation")
+confLevel     = input.float(50, "Confirm rule: RSI must cross above",      minval = 1, maxval = 99, group = "RSI confirmation")
+confMaxWait   = input.int(20,   "Confirm rule: max bars to wait",          minval = 1, group = "RSI confirmation")
+confMaxDrift  = input.float(3.0,"Confirm rule: max % price may have moved", minval = 0, step = 0.5, group = "RSI confirmation")
+
+showMarkers = input.bool(true, "Show all signal markers", group = "Display")
+showTable   = input.bool(true, "Show measured-results table", group = "Display")
+
+cBull    = input.color(color.teal,   "Bullish engulfer",              group = "Colors")
+cBear    = input.color(color.red,    "Bearish engulfer",              group = "Colors")
+cBearHot = input.color(color.orange, "Bearish + RSI>55 (the strong tier)", group = "Colors")
+cBearEar = input.color(color.yellow, "Bearish + RSI>65 (early, not false)", group = "Colors")
+cDivR    = input.color(color.aqua,   "RSI divergence",                group = "Colors")
+cDivM    = input.color(color.fuchsia,"MACD divergence",               group = "Colors")
+
+// ── Oscillators ─────────────────────────────────────────
+rsiVal = ta.rsi(close, rsiLen)
+[macdLine, _sig, _hist] = ta.macd(close, macdFast, macdSlow, macdSig)
+
+// Divergence against the prior `lb`-bar extreme -- price takes out the low
+// while the oscillator holds above its reading AT that prior low. Mirrors
+// smc_regime.strategies.divergence_masks, including using only already-closed
+// bars, so nothing here repaints. Verified against the Python version on
+// 10,030 bars: the two agree on every signal but one, where a tied extreme
+// resolves to the most recent bar here and the oldest there.
+divergence(osc, lb) =>
+    priorLow  = ta.lowest(low[1],  lb)
+    priorHigh = ta.highest(high[1], lb)
+    loOff     = ta.lowestbars(low[1],  lb)     // 0 .. -(lb-1)
+    hiOff     = ta.highestbars(high[1], lb)
+    bull = low  < priorLow  and osc > osc[1 - loOff]
+    bear = high > priorHigh and osc < osc[1 - hiOff]
+    [bull, bear]
+
+[rsiDivBull, rsiDivBear]   = divergence(rsiVal,   divLookbk)
+[macdDivBull, macdDivBear] = divergence(macdLine, divLookbk)
+
+// ── Engulfing pattern ───────────────────────────────────
+rng     = high - low
+body    = math.abs(close - open)
+bodyTop = math.max(close, open)
+bodyBot = math.min(close, open)
+upWick  = high - bodyTop
+dnWick  = bodyBot - low
+
+outside = high > high[1] and low < low[1]
+bodyOK  = rng > 0 and body / rng >= minBodyPct
+
+engulfUp = not reqBodyEngulf or (close >= math.max(open[1], close[1]) and open  <= math.min(open[1], close[1]))
+engulfDn = not reqBodyEngulf or (open  >= math.max(open[1], close[1]) and close <= math.min(open[1], close[1]))
+
+prevBull = close[1] > open[1]
+prevBear = close[1] < open[1]
+prevFlat = close[1] == open[1]
+
+bullOB = outside and close > open and bodyOK and engulfUp and (prevBear or (allowDojiPrev and prevFlat)) and dnWick >= upWick * wickRatio and dnWick > 0
+bearOB = outside and close < open and bodyOK and engulfDn and (prevBull or (allowDojiPrev and prevFlat)) and upWick >= dnWick * wickRatio and upWick > 0
+
+// ── The capped RSI-confirmation rule ────────────────────
+// A qualifying engulfer opens a waiting window; the FIRST time RSI crosses
+// the trigger the window closes, whether or not the entry is taken -- if
+// price has already run past the cap by then, the setup is skipped, which is
+// what turned this rule from negative to positive in testing.
+// One pending setup at a time: a fresh engulfer arriving mid-wait replaces
+// the one being waited on. The Python version tracks each signal
+// independently, so a cluster of engulfers can produce slightly different
+// entries there -- rare, and it only affects overlapping setups.
+var bool  waiting     = false
+var float signalPrice = na
+var int   signalBar   = na
+
+confirmEntry = false
+if waiting and not na(signalBar) and bar_index - signalBar > confMaxWait
+    waiting := false
+if waiting and rsiVal > confLevel and bar_index > signalBar
+    confirmEntry := (close / signalPrice - 1) * 100 <= confMaxDrift
+    waiting := false
+if bullOB and rsiVal < confSignalRsi
+    waiting     := true
+    signalPrice := close
+    signalBar   := bar_index
+
+// ── Tiers, with the meanings the study actually supports ─
+bearStrong = bearOB and rsiVal > 55        // the reliable bearish tier
+bearEarly  = bearOB and rsiVal > 65        // right idea, runs against you ~1 month first
+
+// "bearish engulfer + RSI divergence + one confirming bearish candle" is
+// only known one bar AFTER the engulfer, so the entry bar is that next bar.
+bearStackEntry = bearOB[1] and rsiDivBear[1] and close < open
+
+// ── Mode plumbing ───────────────────────────────────────
+measuredHold = switch mode
+    MODE_MACD   => 10
+    MODE_RSIDIV => 5
+    MODE_CONF   => 20
+    MODE_BULLOB => 10
+    MODE_BEAR55 => 60
+    MODE_BEARST => 60
+    => 0
+holdBars = holdOverride > 0 ? holdOverride : measuredHold
+
+longSignal = switch mode
+    MODE_MACD   => macdDivBull
+    MODE_RSIDIV => rsiDivBull
+    MODE_CONF   => confirmEntry
+    MODE_BULLOB => bullOB
+    => false
+
+shortSignal = switch mode
+    MODE_BEAR55 => bearStrong
+    MODE_BEARST => bearStackEntry
+    => false
+
+var int entryBar = na
+if strategy.position_size == 0 and longSignal
+    strategy.entry("long", strategy.long)
+    entryBar := bar_index
+if strategy.position_size == 0 and shortSignal
+    strategy.entry("short", strategy.short)
+    entryBar := bar_index
+if strategy.position_size != 0 and not na(entryBar) and bar_index - entryBar >= holdBars
+    strategy.close_all("hold elapsed")
+    entryBar := na
+
+// ── Markers ─────────────────────────────────────────────
+bearCol = bearEarly ? cBearEar : bearStrong ? cBearHot : cBear
+plotshape(showMarkers and bullOB,      "Bullish engulfer", shape.triangleup,   location.belowbar, cBull,   size = size.tiny)
+plotshape(showMarkers and bearOB,      "Bearish engulfer", shape.triangledown, location.abovebar, bearCol, size = size.tiny)
+plotshape(showMarkers and rsiDivBull,  "RSI divergence",   shape.circle,       location.belowbar, cDivR,   size = size.tiny)
+plotshape(showMarkers and macdDivBull, "MACD divergence",  shape.diamond,      location.belowbar, cDivM,   size = size.tiny)
+plotshape(showMarkers and rsiDivBear,  "RSI div (bear)",   shape.circle,       location.abovebar, cDivR,   size = size.tiny)
+plotshape(showMarkers and macdDivBear, "MACD div (bear)",  shape.diamond,      location.abovebar, cDivM,   size = size.tiny)
+plotshape(showMarkers and confirmEntry,"Confirmed entry",  shape.labelup,      location.belowbar, color.new(cBull, 20), text = "C", textcolor = color.white, size = size.tiny)
+
+// ── What the study measured, for comparison ─────────────
+var table info = table.new(position.top_right, 2, 9, border_width = 1)
+if showTable and barstate.islast
+    table.cell(info, 0, 0, "Measured on 411 tickers, 5y daily", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
+    table.cell(info, 1, 0, "excess vs random timing", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
+    table.cell(info, 0, 1, "MACD divergence, 10-bar hold", text_size = size.tiny)
+    table.cell(info, 1, 1, "+0.72%/trade  t=2.7 (month)", text_size = size.tiny)
+    table.cell(info, 0, 2, "RSI divergence, 5-bar hold", text_size = size.tiny)
+    table.cell(info, 1, 2, "+0.24%/trade  t=2.6 (month)", text_size = size.tiny)
+    table.cell(info, 0, 3, "Engulfer + capped RSI confirm", text_size = size.tiny)
+    table.cell(info, 1, 3, "+1.14% @20 bars  t~1 (not sig.)", text_size = size.tiny)
+    table.cell(info, 0, 4, "Bullish engulfer, raw", text_size = size.tiny)
+    table.cell(info, 1, 4, "-0.30% @5 bars  (negative)", text_size = size.tiny)
+    table.cell(info, 0, 5, "Bearish engulfer + RSI>55", text_size = size.tiny)
+    table.cell(info, 1, 5, "+2.34% @60 bars  t=-2.9 (month)", text_size = size.tiny)
+    table.cell(info, 0, 6, "Bear + RSI div + 1 down candle", text_size = size.tiny)
+    table.cell(info, 1, 6, "+2.75% @60 bars  t=4.3 (ticker)", text_size = size.tiny)
+    table.cell(info, 0, 7, "Gross of costs", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 1, 7, "set commission in Properties", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 0, 8, "Sample: mostly a rising market", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 1, 8, "no out-of-sample test yet", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+
+// ── Alerts ──────────────────────────────────────────────
+alertcondition(macdDivBull,    "MACD bullish divergence",   "MACD bullish divergence")
+alertcondition(rsiDivBull,     "RSI bullish divergence",    "RSI bullish divergence")
+alertcondition(confirmEntry,   "Confirmed bullish entry",   "Bullish engulfer confirmed by RSI within the drift cap")
+alertcondition(bearStrong,     "Bearish engulfer RSI>55",   "Bearish engulfer with RSI above 55")
+alertcondition(bearStackEntry, "Bearish stack confirmed",   "Bearish engulfer + RSI divergence + confirming down candle")

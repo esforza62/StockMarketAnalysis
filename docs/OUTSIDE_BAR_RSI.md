@@ -534,3 +534,38 @@ trend filter is baked in, following `rsi_dip_recovery`'s reasoning: the
 "in a downtrend" part is recovered from the downstream regime split, and the
 figures quoted here are that bucket. `tests/test_engulfer_rsi_confirmed.py`
 covers the entry mechanics, the cap, and the wait window.
+
+
+# Reviewing all of it on a chart
+
+`pinescript/outside_bar_tested_signals.pine` puts every rule tested in this
+document on one TradingView chart, as a `strategy()` so the Strategy Tester
+can re-run them.
+
+It does two things the Python harness cannot:
+
+- **Trades the short side**, where most of the measured edge is. `run_backtest`
+  is single-position long-only, so the bear results in this document were only
+  ever event studies; in TradingView they can be traded.
+- **Applies costs.** Nothing in this repo models commission or slippage, and
+  at 5–10 bar holds that is the difference between an edge and none. Set them
+  in the Properties tab and watch what survives.
+
+Entries fill at the signal bar's close (`process_orders_on_close = true`) and
+exits are fixed-bar holds, both matching how the Python study measured them.
+The rules selectable in the "Rule to trade" input are the six tested
+configurations, each defaulting to the hold length it was measured on, and an
+on-chart table carries the measured numbers so the Strategy Tester's output
+can be read against them. Expect differences: this runs one symbol where the
+study pooled 411, and the study's headline figure — excess return over random
+entry timing on the same ticker — is not something a Strategy Tester computes.
+
+The divergence translation was verified numerically against
+`divergence_masks` over 10,030 bars: identical on every signal but one, where
+a tied extreme resolves to the most recent bar in Pine and the oldest in
+numpy. The confirmation rule keeps one pending setup at a time where the
+Python version tracks each independently — it only differs when engulfers
+overlap.
+
+**Not compile-checked.** There is no TradingView access from the environment
+this was written in, so the script has been reviewed by hand but never run.

@@ -156,6 +156,13 @@ TradingView chart as a strategy, so they can be reviewed by eye and re-run in
 the Strategy Tester -- including the short side, which the Python engine
 cannot trade, and with commission and slippage, which it does not model.
 
+`smc_regime/portfolio.py` turns a trade log into a daily equity curve and the
+risk-adjusted statistics the per-trade summaries cannot express: Sharpe,
+Sortino, max drawdown, and a market-neutral view (fixed beta-1 hedge, or a
+fitted beta with alpha and information ratio). On the tested rules it says no
+long rule beats equal-weight buy-and-hold net of costs, while the short rules
+do once hedged -- see [docs/OUTSIDE_BAR_RSI.md](docs/OUTSIDE_BAR_RSI.md).
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

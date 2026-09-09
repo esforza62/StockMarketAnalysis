@@ -592,3 +592,115 @@ most recent bar exactly as `ta.lowestbars` does:
             lowest   := low[i]
             oscAtLow := osc[i]
 ```
+
+
+# Sharpe and Sortino, gross and net
+
+Everything above is measured per trade. A Sharpe ratio needs an equity curve,
+so `smc_regime/portfolio.py` builds one: a trade entered at the close of day i
+and exited at the close of day j earns that ticker's close-to-close returns on
+days i+1..j, capital is split equally across whatever is open on a given day,
+and cash earns the risk-free rate when nothing is. Costs are charged as a
+return haircut on the entry day and again on the exit day.
+
+Same data as everywhere else in this document: **411 tickers, daily bars,
+2021-09-09 to 2026-09-08 (5.0 years, ~1,254 bars each)**. Risk-free 4%,
+roughly the T-bill average over the sample. `sharpe_t` is the Sharpe divided
+by its own standard error (Lo 2002) — on five years, a Sharpe needs to be
+about 0.9 before it is two standard errors from zero.
+
+| rule | side | cost/side | ann return | vol | **Sharpe** | **Sortino** | max DD | t | avg open |
+|---|---|---|---|---|---|---|---|---|---|
+| **BENCHMARK** equal-weight buy & hold | long | — | 16.5% | 20.5% | **0.65** | **0.95** | −29.1% | 1.32 | 405 |
+| macd_divergence_10d | long | 0 | 21.3% | 25.8% | **0.73** | 1.10 | −33.8% | 1.44 | 47 |
+| macd_divergence_10d | long | 5bp | 18.2% | 25.8% | 0.62 | 0.94 | −35.8% | 1.27 | 47 |
+| macd_divergence_10d | long | 10bp | 15.1% | 25.8% | 0.52 | 0.78 | −37.7% | 1.09 | 47 |
+| macd_divergence_20d | long | 0 | 17.3% | 23.9% | 0.62 | 0.93 | −30.6% | 1.27 | 78 |
+| macd_divergence_20d | long | 10bp | 14.2% | 23.9% | 0.51 | 0.76 | −32.7% | 1.07 | 78 |
+| rsi_divergence_5d | long | 0 | 14.2% | 26.4% | 0.49 | 0.73 | −30.0% | 1.03 | 46 |
+| rsi_divergence_5d | long | 10bp | 3.1% | 26.4% | **0.10** | 0.14 | −37.1% | 0.22 | 46 |
+| engulfer_rsi_confirmed | long | 0 | 17.1% | 20.5% | 0.68 | 1.02 | **−24.2%** | 1.37 | 14 |
+| engulfer_rsi_confirmed | long | 10bp | 14.1% | 20.5% | 0.56 | 0.82 | −25.0% | 1.15 | 14 |
+| outside_bar_raw | long | 0 | 11.9% | 21.3% | 0.45 | 0.64 | −34.2% | 0.96 | 50 |
+| outside_bar_raw | long | 10bp | 6.5% | 21.3% | 0.22 | 0.31 | −36.8% | 0.48 | 50 |
+| rsi_dip_recovery | long | 0 | 36.8% | 24.1% | **1.26** | **2.08** | −29.6% | 2.10 | 227 |
+| rsi_dip_recovery | long | 10bp | 36.2% | 24.0% | 1.24 | 2.05 | −29.7% | 2.08 | 227 |
+| bear_rsi55 | short | 0 | −13.3% | 19.2% | −0.85 | −1.18 | −60.4% | −1.63 | 80 |
+| bear_candle | short | 0 | −17.2% | 21.5% | −0.95 | −1.29 | −69.5% | −1.76 | 127 |
+| bear_div_candle | short | 0 | −12.3% | 21.0% | −0.71 | −0.98 | −63.8% | −1.41 | 36 |
+
+## What this says
+
+**Not one long rule beats buy-and-hold net of costs.** The benchmark's 0.65 is
+the number to clear. `macd_divergence_10d` clears it gross (0.73) and falls
+below at 5bp (0.62) and 10bp (0.52). Turnover decides everything here:
+`rsi_divergence_5d` runs 11,226 trades and goes from 0.49 to 0.10 across a
+20bp round trip, while `engulfer_rsi_confirmed` runs 851 and barely moves
+(0.68 → 0.56). The rule with the weakest per-trade statistics has the best
+cost resilience and the lowest drawdown in the table.
+
+**The naked short books lose money outright**, and that is not a contradiction
+of the bearish findings — it is the difference between relative and absolute.
+Every bearish result in this document is a statement about a name
+*underperforming*, and a naked short also pays away the market's own ~16%/year
+drift. See below.
+
+**No Sharpe here reaches two standard errors from zero except
+`rsi_dip_recovery`** (t = 2.10), which is also the strategy the per-trade drift
+control said underperforms random entry timing. Both are true: the drift
+control compares its trades to the *same tickers'* average hold, while Sharpe
+compares to an equal-weight basket of all 411 names. It holds a selected,
+higher-returning subset with bad timing inside it.
+
+## Market-neutral: the honest read for the short side
+
+A market-neutral book is short the name and long the benchmark, so the
+benchmark return is *added back* for shorts and subtracted for longs. Doing it
+sign-blind double-counts the market against the shorts and turns a
+roughly-neutral book into a 2x bearish one — it was live in the first version
+of this analysis, and `tests/test_portfolio.py` now pins it.
+
+| rule | side | cost/side | hedged ann | hedged Sharpe | hedged Sortino | hedged max DD |
+|---|---|---|---|---|---|---|
+| **bear_div_candle** | short | 0 | +6.5% | **0.75** | 1.17 | −12.0% |
+| bear_div_candle | short | 10bp | +5.6% | **0.65** | 1.01 | −12.8% |
+| bear_rsi55 | short | 0 | +5.0% | 0.62 | 0.99 | −9.4% |
+| bear_rsi55 | short | 10bp | +4.0% | 0.51 | 0.81 | −10.0% |
+| bear_candle | short | 10bp | +0.0% | 0.03 | 0.04 | −9.4% |
+| macd_divergence_10d | long | 0 | +4.3% | 0.39 | 0.62 | −14.2% |
+| macd_divergence_10d | long | 10bp | −1.1% | −0.02 | −0.02 | −19.8% |
+| engulfer_rsi_confirmed | long | 10bp | −2.7% | −0.16 | −0.23 | −39.7% |
+| outside_bar_raw | long | 10bp | −8.7% | −1.20 | −1.56 | −40.5% |
+| rsi_dip_recovery | long | 10bp | +16.5% | 1.35 | 5.39 | −6.6% |
+
+Hedged, the picture inverts. **The bearish rules are the only ones that hold up
+net of costs** — `bear_div_candle` keeps a 0.65 Sharpe at 10bp with a −13%
+drawdown, and it is the configuration the event study already flagged as
+strongest. The long divergence rules, which looked best on a per-trade basis,
+were largely collecting market drift: hedged and costed, `macd_divergence_10d`
+goes to −0.02.
+
+That is the same conclusion this document reached three different ways, now in
+risk-adjusted terms: the long side is beta, the short side is the signal, and
+the engine cannot trade the short side.
+
+## Two caveats that limit all of the above
+
+**The beta-1 hedge flatters high-beta books.** Fitting beta instead
+(`market_model`) gives `macd_divergence_10d` a beta of 1.08 and
+`engulfer_rsi_confirmed` 0.81, so part of what the crude hedge calls alpha is
+leftover market exposure. The fitted-beta figures also charge the risk-free
+rate against both legs, which is punitive for a short book funded by its own
+sale proceeds; the two views bracket the truth (for `bear_div_candle`, roughly
++2.8%/year fitted against +6.5% at beta 1) rather than either being definitive.
+
+**`rsi_dip_recovery`'s 1.26 Sharpe is the number most likely to be an
+artifact.** The tracking universe is today's list, so it carries survivorship
+bias — and a strategy that buys drawdowns is far more exposed to that bias than
+a benchmark that holds everything all the time, because it concentrates
+exposure exactly at the moments a name has fallen. For the survivors those
+recover; the ones that did not recover are not in the file. Its Sortino/Sharpe
+ratio of 1.65 also says its volatility is mostly upside on this sample, which
+sits oddly next to the −98% single-ticker drawdowns documented earlier: at
+portfolio level, 227 concurrent positions diversify away a tail that position
+sizing, not the signal, is controlling.

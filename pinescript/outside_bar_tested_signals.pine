@@ -18,6 +18,9 @@
 // match how the Python backtest measured them. Exits are fixed-bar holds,
 // again matching what was measured -- the mirror-signal exits scored worse.
 //
+// The long rule and the short rule are chosen separately and both run, so
+// one pass shows both sides. Set either to "No ... entries" to isolate a side.
+//
 // Measured results are in the on-chart table. Expect TradingView's numbers to
 // differ: this runs one symbol, the study pooled 411, and the study's headline
 // figure is excess return over random entry timing on the same ticker, which
@@ -28,17 +31,29 @@ strategy("Outside Bar / Divergence -- Tested Signals", overlay = true,
      pyramiding = 0, calc_on_every_tick = false, max_bars_back = 300)
 
 // ── What to trade ───────────────────────────────────────
-MODE_MACD   = "MACD divergence, 10-bar hold (long)  [best measured]"
-MODE_RSIDIV = "RSI divergence, 5-bar hold (long)"
-MODE_CONF   = "Bullish engulfer + capped RSI confirm, 20-bar hold (long)"
-MODE_BULLOB = "Bullish engulfer, raw, 10-bar hold (long)  [measured NEGATIVE]"
-MODE_BEAR55 = "Bearish engulfer + RSI>55, 60-bar hold (short)"
-MODE_BEARST = "Bearish engulfer + RSI div + 1 down candle, 60-bar hold (short)"
-MODE_NONE   = "Signals only, no trades"
+// Long and short are selected INDEPENDENTLY and both run at once, so the
+// chart shows both sides of the study in a single pass. Only one position
+// is held at a time (pyramiding = 0): whichever side fires first while flat
+// takes the slot until its hold elapses, and a signal arriving mid-trade is
+// skipped rather than reversing the open position.
+L_MACD   = "MACD divergence, 10-bar hold  [best measured long]"
+L_RSIDIV = "RSI divergence, 5-bar hold"
+L_CONF   = "Bullish engulfer + capped RSI confirm, 20-bar hold"
+L_RAW    = "Bullish engulfer, raw, 10-bar hold  [measured NEGATIVE]"
+L_OFF    = "No long entries"
 
-mode = input.string(MODE_MACD, "Rule to trade", group = "What to trade",
-     options = [MODE_MACD, MODE_RSIDIV, MODE_CONF, MODE_BULLOB, MODE_BEAR55, MODE_BEARST, MODE_NONE])
-holdOverride = input.int(0, "Hold bars (0 = the measured default for the rule)", minval = 0, group = "What to trade")
+S_RSI55  = "Bearish engulfer + RSI>55, 60-bar hold  [best measured short]"
+S_CANDLE = "Bearish engulfer + 1 bearish candle, 60-bar hold"
+S_STACK  = "Bearish engulfer + RSI div + 1 bearish candle, 60-bar hold"
+S_RAW    = "Bearish engulfer, raw, 60-bar hold"
+S_OFF    = "No short entries"
+
+longRule  = input.string(L_MACD,  "Long rule",  group = "What to trade",
+     options = [L_MACD, L_RSIDIV, L_CONF, L_RAW, L_OFF])
+shortRule = input.string(S_RSI55, "Short rule", group = "What to trade",
+     options = [S_RSI55, S_CANDLE, S_STACK, S_RAW, S_OFF])
+longHoldOverride  = input.int(0, "Long hold bars (0 = the measured default)",  minval = 0, group = "What to trade")
+shortHoldOverride = input.int(0, "Short hold bars (0 = the measured default)", minval = 0, group = "What to trade")
 
 // ── Pattern inputs (same as the original indicator) ─────
 wickRatio     = input.float(1.0,  "Min dominant/opposing wick ratio", minval = 1.0, step = 0.1, group = "Engulfing pattern")
@@ -144,39 +159,51 @@ bearEarly  = bearOB and rsiVal > 65        // right idea, runs against you ~1 mo
 // only known one bar AFTER the engulfer, so the entry bar is that next bar.
 bearStackEntry = bearOB[1] and rsiDivBear[1] and close < open
 
-// ── Mode plumbing ───────────────────────────────────────
-measuredHold = switch mode
-    MODE_MACD   => 10
-    MODE_RSIDIV => 5
-    MODE_CONF   => 20
-    MODE_BULLOB => 10
-    MODE_BEAR55 => 60
-    MODE_BEARST => 60
-    => 0
-holdBars = holdOverride > 0 ? holdOverride : measuredHold
+// ── Rule plumbing ───────────────────────────────────────
+// The two confirmed-candle rules are only known one bar AFTER the engulfer,
+// so their entry bar is that confirming bar.
+bearCandleEntry = bearOB[1] and close < open
 
-longSignal = switch mode
-    MODE_MACD   => macdDivBull
-    MODE_RSIDIV => rsiDivBull
-    MODE_CONF   => confirmEntry
-    MODE_BULLOB => bullOB
+longSignal = switch longRule
+    L_MACD   => macdDivBull
+    L_RSIDIV => rsiDivBull
+    L_CONF   => confirmEntry
+    L_RAW    => bullOB
     => false
 
-shortSignal = switch mode
-    MODE_BEAR55 => bearStrong
-    MODE_BEARST => bearStackEntry
+shortSignal = switch shortRule
+    S_RSI55  => bearStrong
+    S_CANDLE => bearCandleEntry
+    S_STACK  => bearStackEntry
+    S_RAW    => bearOB
     => false
 
-var int entryBar = na
+measuredLongHold = switch longRule
+    L_MACD   => 10
+    L_RSIDIV => 5
+    L_CONF   => 20
+    L_RAW    => 10
+    => 10
+
+longHold  = longHoldOverride  > 0 ? longHoldOverride  : measuredLongHold
+shortHold = shortHoldOverride > 0 ? shortHoldOverride : 60   // every short rule measured on 60 bars
+
+var int entryBar  = na
+var int entryHold = na
+
 if strategy.position_size == 0 and longSignal
     strategy.entry("long", strategy.long)
-    entryBar := bar_index
-if strategy.position_size == 0 and shortSignal
+    entryBar  := bar_index
+    entryHold := longHold
+else if strategy.position_size == 0 and shortSignal
     strategy.entry("short", strategy.short)
-    entryBar := bar_index
-if strategy.position_size != 0 and not na(entryBar) and bar_index - entryBar >= holdBars
+    entryBar  := bar_index
+    entryHold := shortHold
+
+if strategy.position_size != 0 and not na(entryBar) and bar_index - entryBar >= entryHold
     strategy.close_all("hold elapsed")
-    entryBar := na
+    entryBar  := na
+    entryHold := na
 
 // ── Markers ─────────────────────────────────────────────
 bearCol = bearEarly ? cBearEar : bearStrong ? cBearHot : cBear
@@ -187,9 +214,10 @@ plotshape(showMarkers and macdDivBull, "MACD divergence",  shape.diamond,      l
 plotshape(showMarkers and rsiDivBear,  "RSI div (bear)",   shape.circle,       location.abovebar, cDivR,   size = size.tiny)
 plotshape(showMarkers and macdDivBear, "MACD div (bear)",  shape.diamond,      location.abovebar, cDivM,   size = size.tiny)
 plotshape(showMarkers and confirmEntry,"Confirmed entry",  shape.labelup,      location.belowbar, color.new(cBull, 20), text = "C", textcolor = color.white, size = size.tiny)
+plotshape(showMarkers and bearStackEntry, "Bear stack entry", shape.labeldown,  location.abovebar, color.new(cBearHot, 20), text = "S", textcolor = color.white, size = size.tiny)
 
 // ── What the study measured, for comparison ─────────────
-var table info = table.new(position.top_right, 2, 9, border_width = 1)
+var table info = table.new(position.top_right, 2, 10, border_width = 1)
 if showTable and barstate.islast
     table.cell(info, 0, 0, "Measured on 411 tickers, 5y daily", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
     table.cell(info, 1, 0, "excess vs random timing", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
@@ -203,12 +231,14 @@ if showTable and barstate.islast
     table.cell(info, 1, 4, "-0.30% @5 bars  (negative)", text_size = size.tiny)
     table.cell(info, 0, 5, "Bearish engulfer + RSI>55", text_size = size.tiny)
     table.cell(info, 1, 5, "+2.34% @60 bars  t=-2.9 (month)", text_size = size.tiny)
-    table.cell(info, 0, 6, "Bear + RSI div + 1 down candle", text_size = size.tiny)
-    table.cell(info, 1, 6, "+2.75% @60 bars  t=4.3 (ticker)", text_size = size.tiny)
-    table.cell(info, 0, 7, "Gross of costs", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
-    table.cell(info, 1, 7, "set commission in Properties", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
-    table.cell(info, 0, 8, "Sample: mostly a rising market", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
-    table.cell(info, 1, 8, "no out-of-sample test yet", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 0, 6, "Bear + 1 bearish candle", text_size = size.tiny)
+    table.cell(info, 1, 6, "+2.94% @60 bars  t=2.2 (month)", text_size = size.tiny)
+    table.cell(info, 0, 7, "Bear + RSI div + 1 down candle", text_size = size.tiny)
+    table.cell(info, 1, 7, "+2.75% @60 bars  t=4.3 (ticker)", text_size = size.tiny)
+    table.cell(info, 0, 8, "Gross of costs", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 1, 8, "set commission in Properties", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 0, 9, "Sample: mostly a rising market", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 1, 9, "no out-of-sample test yet", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
 
 // ── Alerts ──────────────────────────────────────────────
 alertcondition(macdDivBull,    "MACD bullish divergence",   "MACD bullish divergence")

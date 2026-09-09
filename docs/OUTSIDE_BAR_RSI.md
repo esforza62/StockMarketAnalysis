@@ -553,10 +553,13 @@ It does two things the Python harness cannot:
 
 Entries fill at the signal bar's close (`process_orders_on_close = true`) and
 exits are fixed-bar holds, both matching how the Python study measured them.
-The rules selectable in the "Rule to trade" input are the six tested
-configurations, each defaulting to the hold length it was measured on, and an
-on-chart table carries the measured numbers so the Strategy Tester's output
-can be read against them. Expect differences: this runs one symbol where the
+The long rule and the short rule are selected **independently and both run**,
+so a single pass shows both sides of the study; set either to "No ... entries"
+to isolate one. Only one position is held at a time (`pyramiding = 0`), so
+whichever side fires first while flat takes the slot until its hold elapses,
+and a signal arriving mid-trade is skipped rather than reversing. Each rule
+defaults to the hold length it was measured on, and an on-chart table carries
+the measured numbers so the Strategy Tester's output can be read against them. Expect differences: this runs one symbol where the
 study pooled 411, and the study's headline figure — excess return over random
 entry timing on the same ticker — is not something a Strategy Tester computes.
 

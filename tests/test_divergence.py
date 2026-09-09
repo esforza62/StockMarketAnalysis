@@ -10,7 +10,15 @@ import pandas as pd
 
 from smc_regime import indicators as ind
 from smc_regime.backtest import run_backtest
-from smc_regime.strategies import rsi_divergence, rsi_divergence_5d, rsi_divergence_masks
+from smc_regime.strategies import (
+    divergence_masks,
+    macd_divergence,
+    macd_divergence_10d,
+    macd_divergence_masks,
+    rsi_divergence,
+    rsi_divergence_5d,
+    rsi_divergence_masks,
+)
 
 
 def frame(values):
@@ -84,4 +92,23 @@ assert set(holds) == {5}, holds
 assert rsi_divergence(long_path)["exit"].equals(rsi_divergence_masks(long_path)[1]), "default exit is the mirror signal"
 print("6. rsi_divergence_5d holds exactly five bars  OK")
 
-print("\nall RSI-divergence checks passed")
+# 7. The primitive is oscillator-agnostic: passing RSI explicitly must
+#    reproduce the RSI wrapper exactly, and the MACD wrapper must use the
+#    MACD line rather than RSI.
+explicit = divergence_masks(gentle, ind.rsi(gentle["Close"], 14), 20)
+assert explicit[0].equals(rsi_divergence_masks(gentle, 14, 20)[0])
+assert explicit[1].equals(rsi_divergence_masks(gentle, 14, 20)[1])
+macd_bull, _ = macd_divergence_masks(long_path)
+macd_line = ind.macd(long_path["Close"], 12, 26, 9)["macd"]
+assert macd_bull.equals(divergence_masks(long_path, macd_line, 20)[0])
+print("7. divergence_masks is oscillator-agnostic  OK")
+
+# 8. macd_divergence_10d holds ten bars; the default still exits on the mirror.
+macd_holds = set()
+for trade in run_backtest(long_path, macd_divergence_10d(long_path)):
+    macd_holds.add(pos[trade.exit_date] - pos[trade.entry_date])
+assert macd_holds == {10}, macd_holds   # fixture yields exactly one MACD-divergence trade
+assert macd_divergence(long_path)["exit"].equals(macd_divergence_masks(long_path)[1])
+print("8. macd_divergence_10d holds ten bars  OK")
+
+print("\nall divergence checks passed")

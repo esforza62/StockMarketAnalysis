@@ -327,3 +327,119 @@ the variable that splits it.
   the false-reading experience actually lives, and it is a timing warning
   rather than an invalidation.
 - The bullish tier is not earning its place as a filter either way.
+
+
+# Confirming a reversal: follow-through candles, and divergence
+
+Three questions: can a bullish engulfer in a downtrend be trusted if one or
+two bullish candles follow, does the same hold for a bearish engulfer in an
+uptrend, and does RSI or MACD divergence work as the confirmation instead.
+
+Method: the entry moves to the close of the **confirming** bar, and the
+forward return is measured from there — the up bars you waited for are spent,
+not counted as profit. Two controls decide what any improvement means: "wait
+one bar unconditionally" separates the delay from the condition, and the same
+follow-through with **no** engulfer separates the pattern from plain momentum.
+Signs are flipped on bearish cohorts so positive always means the signal's own
+direction was right.
+
+## Bullish engulfer in a downtrend: confirmation makes it worse
+
+Excess return from the entry bar, confirmed downtrend only (regime-tagged,
+`confirm_bars=3`):
+
+| entry rule | signals | 5 bars | 10 bars | t by ticker (10b) |
+|---|---|---|---|---|
+| engulfer, enter same bar | 2,137 | −0.29% | −0.62% | −2.21 |
+| engulfer, wait 1 bar unconditionally | 2,137 | −0.21% | −0.50% | −1.73 |
+| engulfer + 1 bullish candle | 1,071 | −0.26% | −0.88% | −2.82 |
+| **engulfer + 2 bullish candles** | 627 | **−1.17%** | **−2.07%** | **−5.14** |
+| engulfer + close above the engulfer's high | 910 | −0.04% | −0.59% | −1.85 |
+| control: down bar + 2 up candles, no engulfer | 18,842 | −0.22% | −0.36% | −5.01 |
+
+More confirmation, worse results, monotonically. Waiting a bar
+*unconditionally* costs nothing — so it is not the delay, it is the condition.
+Requiring up bars means only entering after a bounce has already happened, and
+in a downtrend you are paying for that bounce: the higher entry price is the
+entire cost, and it is bigger than the information the follow-through carries.
+The control says roughly half the damage is generic bounce-chasing and the
+engulfer version is worse than the control, not better.
+
+Month-clustered t-stats here run −0.8 to −2.5, so read this as "no evidence
+confirmation helps, decent evidence it hurts" rather than a law.
+
+## Bearish engulfer in an uptrend: confirmation does help
+
+The mirror question gives the opposite answer, which is consistent with
+everything else in this document — bearish setups in this sample pay slowly
+and need confirmation; bullish ones do not.
+
+| entry rule | signals | 20 bars | 60 bars | t by ticker (60b) | t by month (60b) |
+|---|---|---|---|---|---|
+| engulfer, enter same bar | 3,245 | +0.70% | +2.13% | 1.82 | 1.51 |
+| **engulfer + 1 bearish candle** | 1,533 | +0.95% | **+2.94%** | **3.23** | **2.17** |
+| engulfer + 2 bearish candles | 707 | +1.23% | +2.12% | 1.85 | 0.94 |
+| engulfer + close below the engulfer's low | 1,229 | +0.95% | +2.30% | 4.15 | 1.59 |
+| control: up bar + 2 down candles, no engulfer | 22,671 | +0.43% | +1.10% | 5.45 | 0.96 |
+
+One confirming bearish candle is the sweet spot: +2.94% over 60 bars, the only
+confirmation rule in either direction that is significant under month
+clustering. Two candles is worse than one — same over-waiting cost as the
+bullish side, just not enough to swamp the signal. Note the horizon: nothing
+happens in the first 10 bars either way. This is a slow signal.
+
+## Divergence as the confirmation
+
+| cohort | signals | 5 bars | 10 bars | 20 bars | 60 bars | t by month (10b) |
+|---|---|---|---|---|---|---|
+| bull engulfer alone | 7,139 | −0.30% | −0.35% | −0.24% | −0.23% | −1.55 |
+| bull engulfer + RSI divergence | 1,148 | −0.31% | −0.97% | +0.01% | +0.42% | −0.11 |
+| bull engulfer + MACD divergence | 416 | +0.02% | −0.25% | +0.73% | −0.80% | −1.11 |
+| bull engulfer + RSI div + 1 up candle | 534 | −0.42% | −1.15% | −0.31% | −1.15% | −0.55 |
+| **RSI divergence alone** | 13,795 | +0.24% | +0.25% | +0.65% | +1.72% | **2.37** |
+| **MACD divergence alone** | 6,895 | +0.40% | **+0.93%** | **+1.38%** | +2.47% | **3.26** |
+| bear engulfer alone | 8,416 | −0.06% | −0.19% | +0.34% | +0.86% | −1.30 |
+| bear engulfer + RSI divergence | 1,799 | −0.06% | −0.10% | +0.91% | +2.26% | 0.61 |
+| bear engulfer + MACD divergence | 743 | −0.20% | +0.10% | +1.44% | +2.69% | −1.03 |
+| **bear engulfer + RSI div + 1 down candle** | 867 | +0.07% | −0.26% | **+1.41%** | **+2.75%** | −0.00 |
+
+On the **long** side divergence does not rescue the engulfer — but divergence
+*without* it remains the best signal in this whole document, and **MACD
+divergence is the stronger of the two oscillators**: +0.93% at 10 bars and
++1.38% at 20 against RSI's +0.25%/+0.65%, on half as many signals. Traded on a
+fixed hold, one position per ticker, against random entry timing:
+
+| rule | trades | win rate | avg return | excess | t by ticker | t by month |
+|---|---|---|---|---|---|---|
+| **MACD divergence, 10-bar hold** | 5,748 | 55.3% | +1.32% | **+0.72%** | **4.48** | **2.72** |
+| MACD divergence, 20-bar hold | 4,802 | 56.1% | +2.27% | +1.01% | 5.45 | 1.99 |
+| RSI divergence, 5-bar hold | 11,226 | 53.9% | +0.54% | +0.24% | 3.42 | 2.60 |
+| both divergences, 10-bar hold | 3,468 | 55.4% | +1.39% | +0.82% | 4.23 | 2.41 |
+
+Requiring both divergences is not better than MACD alone — it halves the trade
+count for the same edge.
+
+On the **short** side the stack works the way the user's instinct suggested:
+bear engulfer + RSI divergence + one confirming bearish candle is the strongest
+bearish configuration measured (+2.75% over 60 bars, t = 4.29 by ticker), and
+it is still on the side this long-only engine cannot trade.
+
+## Standing caveats
+
+By now dozens of cohorts have been tested on one five-year window of one
+universe. Month-clustered t-stats of 2–3 in that setting are suggestive, not
+established, and the multiple-comparison exposure is real. Everything here is
+also gross of costs, which at 5–10 bar holds is the difference between an edge
+and none. The honest next steps are an out-of-sample period (this sample is
+almost entirely a rising market, which is exactly the regime that flatters
+bearish-signal patience and punishes bullish reversal-chasing) and commission
+and slippage modelling.
+
+## Code
+
+- `divergence_masks(df, oscillator, lookback)` — the primitive, now
+  oscillator-agnostic; `rsi_divergence_masks` and `macd_divergence_masks` wrap it.
+- `macd_divergence` (mirror exit) and `macd_divergence_10d` (fixed ten-bar
+  hold, its best-measured exit), both registered.
+- `tests/test_divergence.py` covers both oscillators, the no-lookahead
+  property, and the fixed-hold exits.

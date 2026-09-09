@@ -143,7 +143,11 @@ side (which this long-only engine cannot trade) carries the real edge. The
 follow-up in the same document tests tighter RSI confirmation bands and RSI
 divergence: `rsi_divergence` / `rsi_divergence_5d` came out of it, and are
 the only bullish signal there that beat random timing under clustered
-significance tests.
+significance tests -- `macd_divergence_10d` more strongly than the RSI
+version. The same document tests follow-through confirmation on engulfing
+candles: waiting for bullish candles after a bullish engulfer in a downtrend
+makes it worse, while one confirming bearish candle after a bearish engulfer
+in an uptrend makes it better.
 
 ### Next steps
 

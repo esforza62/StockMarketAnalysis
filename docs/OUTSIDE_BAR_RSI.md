@@ -116,7 +116,11 @@ The year split says the same thing from another angle: `outside_bar` averaged
 The exit rule above is mine, not the indicator's, so it could be what is
 losing the money. Testing the raw signal with no strategy attached — forward
 return after each signal minus that ticker's average N-bar return, pooled over
-all 411 tickers:
+all 411 tickers. **The t-stats in this table are pooled and therefore
+optimistic** — overlapping windows on the same ticker, and 411 tickers moving
+together on the same days, are not independent observations. The follow-up
+section re-runs them clustered; read this table for effect sizes and the
+clustered one for significance:
 
 | cohort | horizon | excess return | t |
 |---|---|---|---|
@@ -136,13 +140,13 @@ the same horizon the bearish signal is followed by slightly *above*-average
 returns, also the opposite of its claim: both are short-horizon mean reversion
 after an outsized bar.
 
-The one genuinely strong result in the whole study is the bearish signal at
-long horizons, and specifically the indicator's own highlighted bear tier:
-**a bearish wick-filtered outside bar with RSI(21) above 50 precedes 2.08%
-underperformance over the next 60 bars, t = −6.1.** That is the largest and
-most significant effect measured here, it is on the side the Pine script
-already colours specially, and it is exactly the side this long-only engine
-cannot trade.
+The largest effect in the study is the bearish signal at long horizons, and
+specifically the indicator's own highlighted bear tier: a bearish
+wick-filtered outside bar with RSI(21) above its midline precedes ~2%
+underperformance over the next 60 bars. It is on the side the Pine script
+already colours specially, and exactly the side this long-only engine cannot
+trade. How much of it survives clustering — and which midline threshold holds
+up — is the next section.
 
 ## Where this leaves it
 
@@ -157,3 +161,107 @@ test properly (`run_backtest` is single-position long-only, and shorting is on
 the "don't approximate, flag it" list in `ROADMAP.md`). A short-side harness
 would be a real addition, not a tweak — that is a decision for the user, not
 something to bolt on quietly.
+
+
+# Follow-up: tighter RSI bands, and RSI divergence
+
+Two questions from the user after the first pass: does tightening the RSI
+confirmation to **below 45 / above 55** sharpen the signal, and does adding
+**RSI divergence** help? Same universe, same period, same method.
+
+## Clustering first, because it changes the answers
+
+The t-stats in the first event-study table pool every signal as an
+independent observation. They are not: 60-bar windows on one ticker overlap
+each other, and all 411 tickers move together on the same days. Recomputing
+the key cohorts three ways — pooled, clustered by ticker (411 units), and
+clustered by calendar month (61 units, which is what absorbs the market-wide
+component):
+
+| cohort | horizon | excess | t pooled | t by ticker | t by month | months positive |
+|---|---|---|---|---|---|---|
+| bull outside bar | 5 bars | −0.30% | −3.98 | −3.63 | −1.69 | 47% |
+| bull + RSI < 45 | 5 bars | −0.38% | −2.10 | −2.19 | +0.31 | 47% |
+| bear + RSI > 50 | 60 bars | −2.08% | −6.08 | −5.27 | −1.87 | 41% |
+| **bear + RSI > 55** | **60 bars** | **−2.34%** | **−5.80** | **−4.73** | **−2.85** | **34%** |
+| **bull divergence, no outside bar** | **5 bars** | **+0.24%** | **+3.81** | **+3.76** | **+2.73** | **66%** |
+| bull divergence, no outside bar | 20 bars | +0.65% | +4.99 | +5.01 | +2.27 | 69% |
+
+Two corrections to the first pass fall out of this. The bullish outside bar's
+short-horizon underperformance is consistent (negative pooled, by ticker, and
+by month) but only weakly significant once clustered — it is best read as "no
+edge", not as a reliable fade. And the headline bear result at RSI > 50 does
+not survive month clustering (t = −1.87).
+
+## Tighter bands: yes on the short side, no on the long side
+
+**Bear > 55 is a real improvement.** It is the one cohort in the study
+significant under *both* clustering schemes: −2.34% over 60 bars, month-
+clustered t = −2.85 against −1.87 for the > 50 version, underperforming in
+two thirds of calendar months. It costs 38% of the signals to get there
+(2,545 vs 4,107). Tightening further reverses it — > 60 and > 65 give
+−1.62% and −1.88% on progressively weaker t-stats.
+
+**Bull < 45 does nothing.** Pooled it looks negative (t = −2.10 at 5 bars),
+month-clustered it is indistinguishable from zero (+0.31), and as a traded
+strategy it is worse than the < 50 version: −1.10% vs −0.76% against random
+timing. Bands below 40 have too few signals to read — the one cell that looks
+good (< 35 at 20 bars, +1.65%, t = 2.07) is one cell out of 25 tested and
+should not be believed without an out-of-sample check.
+
+That asymmetry is not surprising in hindsight: 2021–2026 was mostly a rising
+market, so "RSI is deeply oversold" mostly selects falling knives, while "RSI
+is still strong" genuinely marks bars where a bearish reversal has something
+to reverse.
+
+## Divergence: it works, but only with the outside-bar filter removed
+
+Divergence here means price taking out the lowest low of the prior 20 bars
+while RSI(21) holds above its reading at that prior low (`rsi_divergence_masks`
+in `strategies.py`; bearish is the mirror).
+
+Stacked on the outside bar it does not help — the combination is negative at
+5 and 10 bars (−0.32%, −0.94%; t by ticker −2.26, −3.42), i.e. worse than
+divergence alone and no better than the outside bar alone.
+
+**On its own it is the only bullish signal in this whole study that works.**
+13,795 events, positive excess at every horizon tested, and it survives both
+clustering schemes (+0.24% at 5 bars, t = 3.76 by ticker and 2.73 by month;
+positive on 61% of tickers and 66% of months).
+
+Traded mechanically, the exit is what decides whether any of that is
+collectable. Entry on bullish divergence, single position per ticker, exit
+varied:
+
+| exit rule | trades | win rate | avg return | excess vs random timing | t by ticker |
+|---|---|---|---|---|---|
+| **fixed 5-bar hold** | 11,226 | 53.9% | +0.54% | **+0.24%** | **+3.42** |
+| fixed 10-bar hold | 9,467 | 53.6% | +0.79% | +0.18% | +1.38 |
+| fixed 20-bar hold | 7,525 | 54.3% | +1.57% | +0.26% | +1.07 |
+| fixed 60-bar hold | 4,466 | 57.3% | +4.43% | +0.49% | +1.33 |
+| mirror bearish divergence (46-bar avg) | 4,658 | 69.8% | +3.30% | +0.32% | −0.30 |
+| mirror, 40-bar lookback (72-bar avg) | 2,839 | 74.7% | +5.76% | +1.18% | +0.04 |
+
+The 69.8% win rate and +3.30%/trade of the mirror-exit version is the trap
+this whole document keeps running into: it is drift over a long hold. The
+5-bar hold is the version that actually beats random timing, and it is the
+smallest number in the table.
+
+**Costs are not modelled anywhere in this harness, and at 5-bar holds they
+decide it.** A 0.24% gross edge per trade survives a 5bp round trip and does
+not survive 20bp. Adding commission/slippage modelling is already on the
+README's next-steps list; until it is there, this is a signal that looks real,
+not a strategy that is known to pay.
+
+## What changed in the code
+
+- `rsi_divergence_masks()` — the divergence primitive, with the no-lookahead
+  property covered by `tests/test_rsi_divergence.py`.
+- `rsi_divergence` (mirror exit) and `rsi_divergence_5d` (fixed 5-bar hold),
+  both registered so the nightly run measures them.
+- `outside_bar_divergence` — the "more confirmation" stack, registered
+  despite testing badly, so the DB keeps accumulating evidence rather than
+  the question resting on one backtest.
+- `outside_bar_rsi(midline=...)` takes the tighter band directly; the bear
+  side that the > 55 result belongs to still needs a short-capable engine,
+  which remains the open decision from the first pass.

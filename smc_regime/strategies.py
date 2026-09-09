@@ -7,6 +7,7 @@ to tag those trades with the SMC regime active on entry.
 """
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from . import indicators as ind
@@ -464,6 +465,117 @@ def outside_bar_rsi(
     return pd.DataFrame({"entry": bull & (r < midline), "exit": bear})
 
 
+def rsi_divergence_masks(
+    df: pd.DataFrame,
+    rsi_window: int = 21,
+    lookback: int = 20,
+) -> tuple[pd.Series, pd.Series]:
+    """Bullish/bearish RSI divergence against the prior `lookback`-bar extreme.
+
+    Bullish: price takes out the lowest low of the previous `lookback` bars
+    while RSI(rsi_window) holds ABOVE its own reading at that prior low --
+    a lower low in price that momentum refuses to confirm. Bearish is the
+    mirror against the prior high.
+
+    The comparison is to the prior swing extreme, not to the prior bar: a
+    one-bar comparison would fire constantly and means nothing. Only bars
+    already closed are used (the rolling window ends at the previous bar,
+    and the RSI reading it is compared against is from a bar strictly in
+    the past), so there is no lookahead.
+    """
+    low, high = df["Low"], df["High"]
+    r = ind.rsi(df["Close"], rsi_window)
+    n = len(df)
+    pos = np.arange(n)
+
+    prior_low = low.shift(1).rolling(lookback).min()
+    prior_high = high.shift(1).rolling(lookback).max()
+    low_offset = low.shift(1).rolling(lookback).apply(np.argmin, raw=True)
+    high_offset = high.shift(1).rolling(lookback).apply(np.argmax, raw=True)
+
+    def rsi_at(offsets: pd.Series) -> pd.Series:
+        # window for bar i spans [i - lookback, i - 1], so the offset the
+        # rolling argmin/argmax returns maps to that absolute bar index.
+        idx = pos - lookback + offsets.to_numpy()
+        out = np.full(n, np.nan)
+        known = ~np.isnan(idx)
+        ints = idx[known].astype(int)
+        in_range = (ints >= 0) & (ints < n)
+        out[np.where(known)[0][in_range]] = r.to_numpy()[ints[in_range]]
+        return pd.Series(out, index=df.index)
+
+    bullish = (low < prior_low) & (r > rsi_at(low_offset))
+    bearish = (high > prior_high) & (r < rsi_at(high_offset))
+    return bullish.fillna(False).astype(bool), bearish.fillna(False).astype(bool)
+
+
+def rsi_divergence(
+    df: pd.DataFrame,
+    rsi_window: int = 21,
+    lookback: int = 20,
+    hold_bars: int | None = None,
+) -> pd.DataFrame:
+    """Bullish RSI divergence in, bearish divergence out -- no outside-bar
+    requirement.
+
+    This exists because of what the outside-bar study measured (see
+    docs/OUTSIDE_BAR_RSI.md). Divergence was tried as extra confirmation on
+    top of the bullish outside bar and did not rescue it; the same
+    divergence WITHOUT the outside-bar requirement was the only bullish
+    cohort in that study to beat the same ticker's own average hold at
+    every horizon tested, and it survived clustering by ticker and by
+    calendar month, which the outside-bar results did not. The pattern
+    filter was subtracting from the signal, not adding to it.
+
+    hold_bars, when set, replaces the mirror exit with a fixed hold of that
+    many bars -- what the event study actually measured, and where the edge
+    turned out to be concentrated (see rsi_divergence_5d). It is built by
+    shifting the entry mask forward, so within a cluster of signals a later
+    signal's shifted exit can close the open trade slightly early, since
+    the engine only acts on an exit while in a position. backtest.py's own
+    max_hold_bars is the exact per-trade version, but it is a backtest
+    parameter rather than part of the signal contract, so it cannot be
+    reached through the STRATEGIES registry the nightly run iterates.
+    """
+    bullish, bearish = rsi_divergence_masks(df, rsi_window, lookback)
+    exit_ = bullish.shift(hold_bars).fillna(False).astype(bool) if hold_bars else bearish
+    return pd.DataFrame({"entry": bullish, "exit": exit_})
+
+
+def rsi_divergence_5d(df: pd.DataFrame, rsi_window: int = 21, lookback: int = 20) -> pd.DataFrame:
+    """rsi_divergence held a fixed five bars instead of waiting for the
+    mirror signal.
+
+    Registered separately because the exit, not the entry, is what decides
+    whether this signal is worth anything. Same entries, exit-only change:
+    holding five bars beat random entry timing on the same tickers by
+    +0.24%/trade (t = 3.4 clustered by ticker, positive on 60% of tickers),
+    while letting the trade run to the bearish-divergence exit -- a 46-bar
+    average hold -- gave most of that back. Costs are modelled nowhere in
+    this harness and at five-bar holds they bite: a 5-10bp round trip takes
+    a real chunk out of a 0.24% gross edge.
+    """
+    return rsi_divergence(df, rsi_window, lookback, hold_bars=5)
+
+
+def outside_bar_divergence(
+    df: pd.DataFrame,
+    wick_ratio: float = 1.0,
+    rsi_window: int = 21,
+    lookback: int = 20,
+) -> pd.DataFrame:
+    """The bullish outside bar AND bullish RSI divergence on the same bar --
+    the "more confirmation" version, kept registered so the nightly run
+    keeps measuring it rather than resting on one backtest. On the study
+    that motivated it this was WORSE than either component alone (see
+    docs/OUTSIDE_BAR_RSI.md): stacking the two filters cut the divergence
+    signal's edge rather than sharpening it.
+    """
+    bull, bear = _outside_bar_signals(df, wick_ratio, 0.0, False, False)
+    bullish, bearish = rsi_divergence_masks(df, rsi_window, lookback)
+    return pd.DataFrame({"entry": bull & bullish, "exit": bear | bearish})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -486,4 +598,7 @@ STRATEGIES = {
     "rsi_dual_hma": rsi_dual_hma_trend,
     "outside_bar": outside_bar_reversal,
     "outside_bar_rsi": outside_bar_rsi,
+    "outside_bar_divergence": outside_bar_divergence,
+    "rsi_divergence": rsi_divergence,
+    "rsi_divergence_5d": rsi_divergence_5d,
 }

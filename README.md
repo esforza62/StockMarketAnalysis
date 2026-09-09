@@ -139,7 +139,11 @@ user's own indicator, and `outside_bar` / `outside_bar_rsi` in
 `smc_regime/strategies.py` are the Python port of it. Its backtest is
 written up in [docs/OUTSIDE_BAR_RSI.md](docs/OUTSIDE_BAR_RSI.md): the long
 side does not beat random entry timing on the same tickers, while the short
-side (which this long-only engine cannot trade) carries the real edge.
+side (which this long-only engine cannot trade) carries the real edge. The
+follow-up in the same document tests tighter RSI confirmation bands and RSI
+divergence: `rsi_divergence` / `rsi_divergence_5d` came out of it, and are
+the only bullish signal there that beat random timing under clustered
+significance tests.
 
 ### Next steps
 

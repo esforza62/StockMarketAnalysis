@@ -704,3 +704,59 @@ ratio of 1.65 also says its volatility is mostly upside on this sample, which
 sits oddly next to the −98% single-ticker drawdowns documented earlier: at
 portfolio level, 227 concurrent positions diversify away a tail that position
 sizing, not the signal, is controlling.
+
+
+# The short side of rsi_dip_recovery, and a correction to the short numbers
+
+`pinescript/smc_rsi_dip_recovery_strategy.pine` is the strategy version of the
+dip-recovery port, with the long side unchanged and a mirror short added: RSI
+spiked over 65 within 10 bars, then crosses back down through 55; cover at RSI
+25. Shorts default to OFF.
+
+## The mirror short loses money per trade
+
+Measured on the same 411 tickers and 5 years: **1,038 trades, 66.9% win rate,
+−6.49% average per trade, worst trade −2,628%.** A high win rate with a
+negative average and an unbounded tail is the signature of picking up pennies
+in front of something — the losers are shorts on names that ran, and a held
+short has no floor.
+
+## A correction: what the short portfolio numbers assumed
+
+The portfolio statistics reported for every short book earlier in this
+document assume something that was not stated, and it changes the answer.
+
+`trade_daily_returns` gives a short −1 × the price return each day. That is a
+short **re-marked to a constant notional every day**, which is the only
+convention consistent with splitting capital equally across open positions
+daily — but it is a different strategy from holding a short. It caps the
+damage from a name that runs, it collects the volatility drag of whatever it
+is short (large and positive on high-volatility names, and unrelated to any
+signal), and it requires trading every position every day, which the
+entry/exit cost model does not charge for.
+
+How much this matters, on the rsi_dip mirror short:
+
+| view | naked ann | naked Sharpe | hedged ann | hedged Sharpe |
+|---|---|---|---|---|
+| daily-rebalanced (what was reported) | +10.3% | 0.39 | +33.7% | **3.64** |
+| the same trades, per trade, held | — | — | — | **−6.49%/trade** |
+
+A 3.64 Sharpe from a mirrored RSI rule was the tell. The bear-engulfer books
+carry the same assumption, though with 60-bar holds rather than 256-day ones
+the distortion is smaller — their hedged Sharpes of 0.65–0.75 should be read
+as "a daily-rebalanced short book, before the daily costs of running one",
+not as a held-short result.
+
+An attempt at static short accounting inside the same equal-weight framework
+was written and then removed: computing each position's return on its own
+shrinking equity and then equal-weighting those returns implicitly re-funds
+positions that have blown up, which is worse than the assumption it replaces.
+Doing it properly needs per-position capital accounting rather than
+equal-weighted returns — a larger change than this module, flagged rather
+than approximated.
+
+That is exactly why the strategy script exists: TradingView's Strategy Tester
+does real short accounting, position by position. Turn the short side on
+there and let it answer the question, rather than trusting either number
+above.

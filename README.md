@@ -162,6 +162,9 @@ Sortino, max drawdown, and a market-neutral view (fixed beta-1 hedge, or a
 fitted beta with alpha and information ratio). On the tested rules it says no
 long rule beats equal-weight buy-and-hold net of costs, while the short rules
 do once hedged -- see [docs/OUTSIDE_BAR_RSI.md](docs/OUTSIDE_BAR_RSI.md).
+Short results there carry an assumption worth knowing before relying on them:
+they describe a short re-marked to constant notional daily, not a held short,
+and the same document shows how far apart those two can be.
 
 ### Next steps
 

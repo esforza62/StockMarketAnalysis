@@ -1,0 +1,141 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0
+// https://mozilla.org/MPL/2.0/
+//@version=6
+// SMC RSI Dip & Recovery -- Strategy (long + short)
+//
+// Strategy version of pinescript/smc_rsi_dip_recovery.pine. The LONG side is
+// a direct port of smc_regime.strategies.rsi_dip_recovery, same defaults,
+// same bar-for-bar signal construction. The SHORT side is the mirror of it
+// reflected around RSI 50, and it is a HYPOTHESIS, not a measured rule --
+// see the note below before trading it.
+//
+// Long:  RSI dipped under 35 within the last 10 bars, then crosses back up
+//        through 45. Exit when RSI reaches 75.
+// Short: RSI spiked over 65 within the last 10 bars, then crosses back down
+//        through 55. Exit when RSI reaches 25.
+//
+// WHAT IS ACTUALLY KNOWN ABOUT THIS STRATEGY (docs/OUTSIDE_BAR_RSI.md):
+//
+//   * The long side, on 411 tickers of daily bars over 2021-09 to 2026-09,
+//     returned +11.07%/trade at a 78.3% win rate, and as an equal-weight
+//     portfolio a 1.26 Sharpe / 2.08 Sortino, barely moved by costs because
+//     the average hold is ~160 calendar days.
+//   * Two large caveats on that. It UNDERPERFORMS random entry timing on the
+//     same tickers over the same holding periods (-1.60%/trade), so most of
+//     the return is drift rather than timing. And the universe is a current
+//     tracking list, so a strategy that buys drawdowns is exactly the kind
+//     most flattered by survivorship bias.
+//   * Single-ticker max drawdown reached -98.4% (BOIL, NVAX, KOLD). Every
+//     stop-loss variant tested made the edge worse without fixing it; what
+//     helped was an entry-side trend filter (rsi_dip_recovery_trend_filter).
+//   * THE SHORT SIDE HAS NEVER BEEN VALIDATED. Measured per trade it LOSES:
+//     1,038 trades, 66.9% win rate but -6.49% average, and a worst trade of
+//     -2,628% -- an unbounded short tail on a name that ran. A portfolio
+//     measurement of it appeared positive, but only under a daily-rebalanced
+//     constant-notional assumption that is a different strategy from holding
+//     a short (see smc_regime/portfolio.py). TradingView's tester does real
+//     short accounting, which is why this script exists: let it settle the
+//     question rather than trusting either number.
+//
+// Shorts are therefore OFF by default. Turn them on to test, not to trade.
+strategy("SMC RSI Dip & Recovery -- Strategy", overlay = true,
+     process_orders_on_close = true, initial_capital = 10000,
+     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
+     pyramiding = 0, calc_on_every_tick = false)
+
+// ---------------------------------------------------------------------
+// Inputs -- same defaults as smc_regime.strategies.rsi_dip_recovery.
+// ---------------------------------------------------------------------
+grpSignal = "Long signal"
+rsiWindow        = input.int(14, "RSI window", group = grpSignal, minval = 2)
+dipThreshold     = input.float(35.0, "Dip threshold (oversold)", group = grpSignal, minval = 0.0, maxval = 100.0)
+confirmThreshold = input.float(45.0, "Confirm threshold (recovery cross)", group = grpSignal, minval = 0.0, maxval = 100.0)
+dipLookback      = input.int(10, "Dip lookback (bars)", group = grpSignal, minval = 1)
+exitRsi          = input.float(75.0, "Exit threshold (overbought)", group = grpSignal, minval = 0.0, maxval = 100.0)
+
+grpShort = "Short signal (unvalidated mirror)"
+enableLong   = input.bool(true,  "Trade the long side",  group = grpShort)
+enableShort  = input.bool(false, "Trade the short side", group = grpShort)
+spikeThreshold    = input.float(65.0, "Spike threshold (overbought)", group = grpShort, minval = 0.0, maxval = 100.0)
+confirmShortLevel = input.float(55.0, "Confirm threshold (breakdown cross)", group = grpShort, minval = 0.0, maxval = 100.0)
+exitRsiShort      = input.float(25.0, "Short exit threshold (oversold)", group = grpShort, minval = 0.0, maxval = 100.0)
+
+grpRisk = "Risk (both sides off by default, as measured)"
+maxHoldBars = input.int(0, "Max hold in bars (0 = hold until the RSI exit)", group = grpRisk, minval = 0)
+stopPct     = input.float(0.0, "Stop loss % (0 = none)", group = grpRisk, minval = 0.0, step = 0.5)
+
+// ---------------------------------------------------------------------
+// Signal -- mirrors rsi_dip_recovery() exactly. dippedRecently checks the
+// dipLookback bars ENDING at the previous bar (not including the current
+// bar), matching the Python .rolling(dip_lookback, min_periods=1).max()
+// .shift(1). The short side is the same construction reflected around 50.
+// ---------------------------------------------------------------------
+r = ta.rsi(close, rsiWindow)
+
+dipFlag        = r < dipThreshold ? 1.0 : 0.0
+dippedRecently = ta.highest(dipFlag, dipLookback)[1] == 1
+longEntry      = (r > confirmThreshold) and (r[1] <= confirmThreshold) and dippedRecently
+longExit       = (r >= exitRsi) and (r[1] < exitRsi)
+
+spikeFlag      = r > spikeThreshold ? 1.0 : 0.0
+spikedRecently = ta.highest(spikeFlag, dipLookback)[1] == 1
+shortEntry     = (r < confirmShortLevel) and (r[1] >= confirmShortLevel) and spikedRecently
+shortExit      = (r <= exitRsiShort) and (r[1] > exitRsiShort)
+
+// ---------------------------------------------------------------------
+// Orders. Single position, entries only while flat -- matching the Python
+// engine, so what trades here is what the backtest would have logged.
+// ---------------------------------------------------------------------
+var int entryBar = na
+
+if strategy.position_size == 0 and enableLong and longEntry
+    strategy.entry("long", strategy.long)
+    entryBar := bar_index
+else if strategy.position_size == 0 and enableShort and shortEntry
+    strategy.entry("short", strategy.short)
+    entryBar := bar_index
+
+if strategy.position_size > 0 and longExit
+    strategy.close("long", "rsi exit")
+    entryBar := na
+if strategy.position_size < 0 and shortExit
+    strategy.close("short", "rsi exit")
+    entryBar := na
+
+if strategy.position_size != 0 and maxHoldBars > 0 and not na(entryBar) and bar_index - entryBar >= maxHoldBars
+    strategy.close_all("max hold")
+    entryBar := na
+
+if strategy.position_size != 0 and stopPct > 0
+    stopLevel = strategy.position_size > 0
+         ? strategy.position_avg_price * (1 - stopPct / 100)
+         : strategy.position_avg_price * (1 + stopPct / 100)
+    strategy.exit("stop", stop = stopLevel)
+
+// ---------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------
+colLong  = color.new(#5CC98A, 0)
+colShort = color.new(#E2707A, 0)
+plotshape(enableLong and longEntry,   "Long entry",  shape.triangleup,   location.belowbar, colLong,  size = size.small)
+plotshape(enableShort and shortEntry, "Short entry", shape.triangledown, location.abovebar, colShort, size = size.small)
+plotshape(enableLong and longExit,    "Long exit",   shape.xcross,       location.abovebar, colLong,  size = size.tiny)
+plotshape(enableShort and shortExit,  "Short exit",  shape.xcross,       location.belowbar, colShort, size = size.tiny)
+
+var table info = table.new(position.top_right, 2, 5, border_width = 1)
+if barstate.islast
+    table.cell(info, 0, 0, "Measured, 411 tickers 5y daily", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
+    table.cell(info, 1, 0, "long side only", text_size = size.tiny, bgcolor = color.new(color.gray, 70))
+    table.cell(info, 0, 1, "Long: per trade", text_size = size.tiny)
+    table.cell(info, 1, 1, "+11.07%, 78.3% win", text_size = size.tiny)
+    table.cell(info, 0, 2, "Long: portfolio", text_size = size.tiny)
+    table.cell(info, 1, 2, "Sharpe 1.26 / Sortino 2.08", text_size = size.tiny)
+    table.cell(info, 0, 3, "Long: vs random timing", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 1, 3, "-1.60%/trade (mostly drift)", text_size = size.tiny, bgcolor = color.new(color.orange, 80))
+    table.cell(info, 0, 4, "Short: per trade", text_size = size.tiny, bgcolor = color.new(color.red, 80))
+    table.cell(info, 1, 4, "-6.49%, worst -2628%", text_size = size.tiny, bgcolor = color.new(color.red, 80))
+
+alertcondition(longEntry,  "RSI dip recovery long entry",  "RSI dipped and recovered -- long entry")
+alertcondition(longExit,   "RSI dip recovery long exit",   "RSI reached overbought -- long exit")
+alertcondition(shortEntry, "RSI spike breakdown short",    "RSI spiked and broke down -- short entry")
+alertcondition(shortExit,  "RSI spike breakdown cover",    "RSI reached oversold -- cover short")

@@ -38,7 +38,33 @@ def trade_daily_returns(
 
     Costs are charged as a return haircut on the entry day and again on the
     exit day, which is where the spread and commission are actually paid.
-    A short position earns the negative of the price return.
+
+    SHORTS CARRY AN ASSUMPTION THAT CHANGES THE ANSWER. A short's daily
+    contribution here is -1 x the price return, which is a short re-marked to
+    a constant notional every day -- the only convention consistent with
+    portfolio_returns() splitting capital equally across open positions each
+    day. It is not "short and hold":
+
+      * it caps the damage from a name that runs away, where a real static
+        short compounds against you without limit;
+      * it collects the volatility drag of whatever it is short, which on
+        high-volatility names is a large positive unrelated to the signal;
+      * it requires trading every position every day, which the entry/exit
+        cost model here does not charge for.
+
+    So portfolio statistics for a short book describe a daily-rebalanced
+    strategy, and should be read next to the per-trade static P&L, which is
+    what a real held short would have made. On the mirror short of
+    rsi_dip_recovery those two disagree completely: the daily-rebalanced book
+    shows a positive hedged return, while the trades themselves average
+    -6.5% each with a worst case of -2,628%.
+
+    A genuinely static short book needs per-position capital accounting
+    rather than equal-weighted returns -- a larger change than this module,
+    and not attempted here rather than approximated badly.
+
+    For LONGS the distinction does not exist: compounding a position's own
+    daily returns reproduces the trade's total return either way.
     """
     close = df["Close"]
     bar_return = close.pct_change()

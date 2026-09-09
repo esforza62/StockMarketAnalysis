@@ -570,5 +570,25 @@ numpy. The confirmation rule keeps one pending setup at a time where the
 Python version tracks each independently — it only differs when engulfers
 overlap.
 
-**Not compile-checked.** There is no TradingView access from the environment
-this was written in, so the script has been reviewed by hand but never run.
+**Not compile-checked.** TradingView's compiler only exists inside their
+authenticated editor, and this environment can reach neither it nor
+tradingview.com (egress-blocked), so the script has never been run on a chart.
+
+What was verified instead: the file parses clean under `pynescript`, whose
+grammar targets v5, with five deliberate breakages (unbalanced parenthesis,
+bad operator, broken `switch` indentation, unterminated string, malformed
+function arrow) all correctly rejected, so the check is not vacuous. That
+covers syntax only. Pine's type system is not checked, and the construct most
+likely to fail there is the variable history offset `osc[1 - loOff]` inside
+`divergence()`. If TradingView rejects it, the equivalent without a computed
+offset is a backward scan using a loop counter, which resolves ties to the
+most recent bar exactly as `ta.lowestbars` does:
+
+```
+    oscAtLow = osc[1]
+    lowest   = low[1]
+    for i = 2 to lb
+        if low[i] < lowest
+            lowest   := low[i]
+            oscAtLow := osc[i]
+```

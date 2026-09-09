@@ -443,3 +443,94 @@ and slippage modelling.
   hold, its best-measured exit), both registered.
 - `tests/test_divergence.py` covers both oscillators, the no-lookahead
   property, and the fixed-hold exits.
+
+
+# Waiting for RSI itself to confirm
+
+A different confirmation mechanism: in a confirmed downtrend, take the
+bullish engulfer only when RSI(21) is below 50 at the signal, then **wait for
+RSI to cross above 55** and enter there. Mirror on the short side — bearish
+engulfer in an uptrend with RSI above 50, wait for RSI to break below 45.
+
+Unlike one or two follow-through candles, this waits for a momentum-regime
+shift. That makes two things as important as the return: how often the
+confirmation ever arrives, and where price is by the time it does.
+
+## The confirmation is not wrong, it is late
+
+| side | confirmed within 10 bars | within 20 | within 60 | median wait | price already moved (20-bar window) |
+|---|---|---|---|---|---|
+| bull: RSI < 50 → > 55 | 21% | 40% | 81% | 10 bars | **+9.1%** |
+| bear: RSI > 50 → < 45 | 18% | 37% | 77% | 11 bars | **−7.6%** |
+
+RSI(21) travelling from below 50 to above 55 takes a median of ten bars, and
+in that time price is up about 9% from the engulfer's close. The rule is
+doing exactly what it promises — it just delivers the news after the move.
+
+That +9% is not a hidden profit, either. It is conditional on the
+confirmation *having arrived*: at the engulfer you cannot know which 40% will
+confirm, so it is the definition of the filter, not a forecast from it.
+
+Returns measured from the confirmed entry:
+
+| cohort | 5 bars | 10 bars | 20 bars | 60 bars | t by month (10b) |
+|---|---|---|---|---|---|
+| bull: engulfer, enter immediately | −0.21% | −0.67% | −0.32% | −0.13% | −0.42 |
+| bull: wait 10 bars unconditionally | +0.11% | +0.47% | +0.59% | +1.00% | −0.58 |
+| **bull: RSI crosses 55 within 10 bars** | −0.65% | −0.97% | −0.82% | −0.09% | **−2.92** |
+| bull: RSI crosses 55 within 20 bars | −0.18% | +0.08% | +0.37% | +0.46% | −2.51 |
+| bull: RSI cross alone, no engulfer | −0.00% | −0.12% | +0.06% | −1.55% | −0.97 |
+| bear: engulfer, enter immediately | +0.01% | +0.08% | +0.69% | **+2.38%** | +0.44 |
+| bear: RSI crosses 45 within 20 bars | +0.08% | +0.26% | +0.77% | +0.62% | −0.48 |
+
+On the long side the exact rule as specified (cross 55) is the worst variant
+tested. On the short side the confirmation costs about three quarters of the
+edge: +0.62% over 60 bars against +2.38% for entering on the engulfer itself.
+Waiting ten bars *unconditionally* beats waiting for the condition on both
+sides — the same result the candle test gave. It is not the delay, it is what
+the condition selects for.
+
+## What does help: a cheaper trigger and a "have I missed it" cap
+
+Sweeping the trigger level shows the cost is almost linear in how far RSI has
+to travel:
+
+| bull trigger | signals | median wait | price already moved | 20-bar excess |
+|---|---|---|---|---|
+| cross 50 | 1,076 | 7 bars | +5.1% | +0.48% |
+| cross 52 | 896 | 8 bars | +6.5% | +0.63% |
+| cross 55 | 654 | 10 bars | +9.1% | +0.37% |
+| cross 60 | 310 | 13 bars | +14.2% | +1.04% |
+
+Adding a cap — take the confirmation only if price is still within 3% of the
+engulfer's close, otherwise skip the setup — changes the sign on the long
+side at every trigger level:
+
+| bull, trigger 50 | signals | 20 bars | 60 bars |
+|---|---|---|---|
+| all confirmations | 1,076 | +0.48% | +0.26% |
+| **only if price has moved ≤ 3%** | 412 | **+1.14%** | **+1.80%** |
+| the ones the cap skips (> 3%) | 664 | +0.07% | −0.72% |
+
+Month-clustered t is about 1.0, so this is a candidate, not a finding — but it
+is the first version of the waiting idea that points the right way, and the
+mechanism is sensible: the confirmation is worth having *if you have not
+already paid for it*.
+
+**The short side is the opposite**, and worth knowing before applying the cap
+symmetrically. There the setups that have already fallen more than 3% are the
+good ones (+4.23% over 60 bars at trigger 50, t = 2.28 by month) and the ones
+that have not are flat. Bearish confirmation is momentum; bullish confirmation
+is a bounce you can overpay for. Use the shallower trigger on that side too:
+RSI < 50 keeps +2.40% at 60 bars where the specified RSI < 45 keeps +0.62%.
+
+## Code
+
+`engulfer_rsi_confirmed` registers the long-side rule in its best-measured
+form — signal RSI below 50, confirmation on a cross back above 50, 20-bar
+maximum wait, 3% drift cap, 20-bar hold — with `max_drift_pct=None` for the
+uncapped version. The docstring says plainly that it is not significant. No
+trend filter is baked in, following `rsi_dip_recovery`'s reasoning: the
+"in a downtrend" part is recovered from the downstream regime split, and the
+figures quoted here are that bucket. `tests/test_engulfer_rsi_confirmed.py`
+covers the entry mechanics, the cap, and the wait window.

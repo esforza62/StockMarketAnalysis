@@ -635,6 +635,63 @@ def outside_bar_divergence(
     return pd.DataFrame({"entry": bull & bullish, "exit": bear | bearish})
 
 
+def engulfer_rsi_confirmed(
+    df: pd.DataFrame,
+    rsi_window: int = 21,
+    signal_max_rsi: float = 50.0,
+    confirm_level: float = 50.0,
+    max_wait: int = 20,
+    max_drift_pct: float | None = 3.0,
+    hold_bars: int = 20,
+) -> pd.DataFrame:
+    """Bullish engulfer while RSI is weak, entered only once RSI itself
+    turns up through confirm_level -- and only if price has not already run
+    away while waiting.
+
+    The waiting rule on its own does not work: RSI(21) climbing from below
+    50 to above 55 takes a median 10 bars, by which time price is already
+    up ~9% from the engulfer's close, and returns measured from THAT entry
+    are below average (see docs/OUTSIDE_BAR_RSI.md). The confirmation is
+    not wrong, it is late -- the move it confirms has largely happened.
+
+    max_drift_pct is what makes the rule tradeable rather than late: skip
+    the setup unless the confirmation arrives while price is still within
+    that percentage of the engulfer's close. On the measured sample that
+    flips the sign at every trigger level tested (+1.14% over 20 bars
+    against random entry timing at confirm_level=50, versus -0.12%
+    uncapped), which is why the default trigger here is the midline rather
+    than 55: a shallower trigger arrives sooner and cheaper.
+
+    Not significant, and registered on that basis -- roughly 400 qualifying
+    entries, month-clustered t around 1. It is a candidate the nightly run
+    should keep measuring, not a result. Set max_drift_pct=None for the
+    uncapped version, which measured worse.
+
+    No trend filter is baked in, following rsi_dip_recovery's reasoning:
+    every trade is regime-tagged downstream, so the "in a downtrend" part
+    of the idea is recovered from the regime split rather than assumed
+    here. The documented figures are that downtrend bucket.
+    """
+    close = df["Close"]
+    r = ind.rsi(close, rsi_window)
+    bull, bear = _outside_bar_signals(df, 1.0, 0.0, False, False)
+
+    rsi_vals, close_vals = r.to_numpy(), close.to_numpy()
+    n = len(df)
+    entry = np.zeros(n, dtype=bool)
+    for i in np.flatnonzero((bull & (r < signal_max_rsi)).to_numpy()):
+        for j in range(i + 1, min(i + max_wait, n - 1) + 1):
+            if rsi_vals[j] > confirm_level:
+                drift = (close_vals[j] / close_vals[i] - 1) * 100
+                if max_drift_pct is None or drift <= max_drift_pct:
+                    entry[j] = True
+                break   # the first cross is the confirmation, missed or not
+
+    entry_s = pd.Series(entry, index=df.index)
+    exit_ = entry_s.shift(hold_bars).fillna(False).astype(bool) if hold_bars else bear
+    return pd.DataFrame({"entry": entry_s, "exit": exit_})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -662,4 +719,5 @@ STRATEGIES = {
     "rsi_divergence_5d": rsi_divergence_5d,
     "macd_divergence": macd_divergence,
     "macd_divergence_10d": macd_divergence_10d,
+    "engulfer_rsi_confirmed": engulfer_rsi_confirmed,
 }

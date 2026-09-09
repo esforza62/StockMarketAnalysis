@@ -147,7 +147,9 @@ significance tests -- `macd_divergence_10d` more strongly than the RSI
 version. The same document tests follow-through confirmation on engulfing
 candles: waiting for bullish candles after a bullish engulfer in a downtrend
 makes it worse, while one confirming bearish candle after a bearish engulfer
-in an uptrend makes it better.
+in an uptrend makes it better. Waiting instead for RSI itself to cross back
+through a threshold arrives too late to pay -- unless it arrives while price
+is still near the signal bar, which is what `engulfer_rsi_confirmed` tests.
 
 ### Next steps
 

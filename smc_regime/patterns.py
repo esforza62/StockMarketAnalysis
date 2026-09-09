@@ -105,6 +105,8 @@ def sweep_reclaim(
     atr_window: int = 14,
     min_range_atr: float = 0.5,
     slot_normalized_atr: bool = True,
+    middle_colour: str = "same",
+    confirm: str = "first_extreme",
 ) -> pd.DataFrame:
     """Three-bar sweep-and-reclaim reversal.
 
@@ -136,7 +138,30 @@ def sweep_reclaim(
     Bearish is the exact mirror: two green candles, the second with a long
     upper wick sweeping above the first's high, then a close below the
     first candle's low.
+
+    Two axes of that description are conventions rather than facts, and
+    both are parameters because a real chart disagreed with the defaults.
+
+    middle_colour -- "same" requires the rejection bar to close the same
+    way as the first ("two red candles"). "opposite" requires it to close
+    against them; "any" drops the constraint. A distribution top typically
+    reads green, then a RED bar with a long upper wick -- the rejection bar
+    closing against the prior bar is the rejection -- which "same" cannot
+    match at all. The colour of a bar whose defining feature is a long wick
+    carries little information anyway: it says where the close landed
+    inside a range price had already left.
+
+    confirm -- "first_extreme" needs the third bar to close beyond the
+    FIRST candle's high (bullish) or low (bearish): every seller from both
+    prior bars is offside. "second_close" only needs it to close beyond the
+    second candle's close, which is a far lower bar and fires much more
+    often. Strictly nested: everything "first_extreme" catches,
+    "second_close" catches too.
     """
+    if middle_colour not in ("same", "opposite", "any"):
+        raise ValueError(f"middle_colour must be same/opposite/any, got {middle_colour!r}")
+    if confirm not in ("first_extreme", "second_close"):
+        raise ValueError(f"confirm must be first_extreme/second_close, got {confirm!r}")
     open_, high, low, close = df["Open"], df["High"], df["Low"], df["Close"]
     parts = _parts(df)
     atr = slot_atr(df, atr_window, slot_normalized=slot_normalized_atr)
@@ -159,21 +184,23 @@ def sweep_reclaim(
     swept_low = (low.shift(1) < low.shift(2)) if require_sweep else True
     swept_high = (high.shift(1) > high.shift(2)) if require_sweep else True
 
+    if middle_colour == "same":
+        middle_bull, middle_bear = red.shift(1).fillna(False), green.shift(1).fillna(False)
+    elif middle_colour == "opposite":
+        middle_bull, middle_bear = green.shift(1).fillna(False), red.shift(1).fillna(False)
+    else:
+        middle_bull = middle_bear = pd.Series(True, index=df.index)
+
+    if confirm == "first_extreme":
+        confirm_bull, confirm_bear = close > high.shift(2), close < low.shift(2)
+    else:
+        confirm_bull, confirm_bear = close > close.shift(1), close < close.shift(1)
+
     bullish = (
-        red.shift(2).fillna(False)
-        & red.shift(1).fillna(False)
-        & long_lower
-        & swept_low
-        & big_enough
-        & (close > high.shift(2))
+        red.shift(2).fillna(False) & middle_bull & long_lower & swept_low & big_enough & confirm_bull
     )
     bearish = (
-        green.shift(2).fillna(False)
-        & green.shift(1).fillna(False)
-        & long_upper
-        & swept_high
-        & big_enough
-        & (close < low.shift(2))
+        green.shift(2).fillna(False) & middle_bear & long_upper & swept_high & big_enough & confirm_bear
     )
     return pd.DataFrame(
         {"bullish": bullish.fillna(False), "bearish": bearish.fillna(False)},

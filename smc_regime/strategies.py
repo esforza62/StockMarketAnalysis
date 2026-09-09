@@ -365,6 +365,8 @@ def sweep_outside_reversal(
     min_range_atr: float = 0.5,
     slot_normalized_atr: bool = True,
     require_close_beyond: bool = True,
+    middle_colour: str = "same",
+    confirm: str = "first_extreme",
 ) -> pd.DataFrame:
     """Price-structure reversal on either of two patterns firing -- the
     first strategy here driven by bar structure rather than an indicator.
@@ -397,6 +399,17 @@ def sweep_outside_reversal(
     Signal thresholds are ATR-relative against a per-time-of-day baseline
     (patterns.slot_atr), which matters on any intraday interval and is a
     no-op on daily bars.
+
+    MEASURED, AND IT DOES NOT BEAT RANDOM. Over 76 tickers of daily bars
+    since 2019 the bullish pattern returns 1.28% per month held against
+    1.78% for random entries drawn with the same holding profile, and 3.56%
+    for buy-and-hold. The headline win rate (66%) and mean trade (+25%) are
+    holding-period effects, not selection: all six middle_colour/confirm
+    combinations land between 1.63 and 1.98% per month held once hold time
+    is divided out, despite trade counts differing eightfold. Whether any
+    regime bucket is different is what the nightly regime-conditioned run
+    exists to answer -- this pools every regime together, which is exactly
+    the averaging that harness was built to avoid.
     """
     signals = pat.reversal_signals(
         df,
@@ -407,6 +420,8 @@ def sweep_outside_reversal(
         min_range_atr=min_range_atr,
         slot_normalized_atr=slot_normalized_atr,
         require_close_beyond=require_close_beyond,
+        middle_colour=middle_colour,
+        confirm=confirm,
     )
     return pd.DataFrame(
         {"entry": signals["bullish"].fillna(False), "exit": signals["bearish"].fillna(False)}

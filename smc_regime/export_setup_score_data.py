@@ -127,6 +127,8 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
                 # and wrong in the direction that matters: it would keep
                 # claiming an earnings date is ahead after it has passed.
                 "news": _cell(r["news"]),
+                "volume_ratio": _cell(r["volume_ratio"], 2),
+                "volume_pctile": _cell(r["volume_pctile"], 0),
                 "earnings_date": _cell(r["earnings_date"]),
                 "earnings_is_estimate": _cell(r["earnings_is_estimate"]),
             }

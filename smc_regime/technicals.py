@@ -25,6 +25,10 @@ from .indicators import macd, rsi
 # describe current participation; 50 is the conventional baseline window.
 _VOLUME_RECENT_BARS = 5
 _VOLUME_BASELINE_BARS = 50
+# A ratio needs a distribution behind it to mean anything. Below this many
+# observations the percentile is reported as None rather than as a confident
+# number computed from a handful of points.
+_VOLUME_PCTILE_MIN_OBS = 100
 _MA_FAST = 50
 _MA_SLOW = 200
 # Trailing performance windows, in CALENDAR days rather than bars: "one
@@ -86,6 +90,7 @@ def technical_snapshot(df: pd.DataFrame) -> dict:
         "macd_hist": None,
         "macd_hist_prev": None,
         "volume_ratio": None,
+        "volume_pctile": None,
         "price_change_pct": None,
         **{name: _return_over(close, days) for name, days in _RETURN_WINDOWS_DAYS.items()},
     }
@@ -100,6 +105,21 @@ def technical_snapshot(df: pd.DataFrame) -> dict:
         baseline = volume.tail(_VOLUME_BASELINE_BARS).mean()
         if pd.notna(recent) and pd.notna(baseline) and baseline > 0:
             snapshot["volume_ratio"] = float(recent / baseline)
+
+            # WHERE THIS SITS IN THE TICKER'S OWN HISTORY, not against a
+            # universal multiple. 2x means something very different in a
+            # utility that never trades 2x than in a name that does it
+            # monthly, and a fixed threshold silently asks a different
+            # question of every ticker. The percentile asks the same one:
+            # how unusual is this FOR THIS NAME. Computed over the fetched
+            # window only, so it is a within-sample rank -- on a 2-year
+            # daily series the top percentile is roughly the busiest week.
+            history = (
+                volume.rolling(_VOLUME_RECENT_BARS).mean()
+                / volume.rolling(_VOLUME_BASELINE_BARS).mean()
+            ).dropna()
+            if len(history) >= _VOLUME_PCTILE_MIN_OBS:
+                snapshot["volume_pctile"] = float((history <= snapshot["volume_ratio"]).mean() * 100)
 
         past = close.iloc[-(_VOLUME_RECENT_BARS + 1)]
         if pd.notna(past) and past != 0:

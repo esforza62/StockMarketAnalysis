@@ -695,6 +695,17 @@ def score_ticker(
         "return_1m": snapshot.get("return_1m"),
         # Same treatment: shown, never weighed. See the docstring.
         "news": news,
+        # The raw multiple behind the volume component, carried so the
+        # dashboard can pair it with the news chip. Headline sentiment reads
+        # the LANGUAGE of a story and has no idea whether anyone traded on
+        # it; volume is the nearest thing to a materiality check available
+        # here. The windows line up better than they might: this is a 5-bar
+        # mean over a 50-bar mean, and on daily bars 5 sessions is about the
+        # 7 calendar days the news read covers. They are still shown side by
+        # side rather than combined -- a loud tape and a loud headline are
+        # two observations, and collapsing them into one number would assert
+        # a link this has not measured.
+        "volume_ratio": snapshot.get("volume_ratio"),
         # The DATE, not a countdown. A stored countdown is wrong the day
         # after it is written, and these rows outlive the run that made
         # them -- the days-to-earnings figure is derived wherever it is

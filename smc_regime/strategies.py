@@ -552,6 +552,105 @@ def reversal_mean_reversion(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def rsi_dip_regime_gated(
+    df: pd.DataFrame,
+    rsi_window: int = 14,
+    dip_threshold: float = 35.0,
+    confirm_threshold: float = 45.0,
+    dip_lookback: int = 10,
+    exit_rsi: float = 75.0,
+    gated_regimes: tuple[str, ...] = ("choppy",),
+    pattern_lookback: int = 1,
+    confirm_bars: int = 3,
+    **pattern_kwargs,
+) -> pd.DataFrame:
+    """rsi_dip_recovery, but requiring a reversal bar only in chop.
+
+    MEASURED, AND IT DOES NOT IMPROVE rsi_dip_recovery. Kept because the
+    way it fails is the most legible demonstration in this repo of the trap
+    that also caught rsi_dip_trend_filter: a gate that raises per-trade
+    quality while destroying total return, which looks like an edge from
+    every angle except the one that counts.
+
+    The motivation was real. Over 409 tickers of daily bars since 2019,
+    requiring a bullish reversal bar on rsi_dip_recovery's entry moves the
+    choppy cell from +2.74% excess (t = 0.67) to +7.51% (t = 2.80) while
+    taking trending/up from +5.62% (t = 3.03) to -2.20% (t = -0.13). One
+    rule, opposite signs by regime, and applied unconditionally a clear net
+    loss: -3.02 points of excess paired by ticker (t = -2.24) and a median
+    6-point CAGR cut, worse on 84% of names. Gating it to chop only is the
+    obvious repair.
+
+    IT DOES NOT REPAIR IT. Pooled, the gated variant is slightly worse than
+    the strategy it gates: excess -0.14% against -0.03%, median CAGR 9.3%
+    against 9.8%, 18% of tickers beating SPY against 19%. Paired by ticker
+    -- the only fair test, since both run the same names -- excess moves
+    -0.15 points (t = -0.45, a wash) and CAGR is significantly worse:
+    t = -3.87, better on 18% of tickers, unchanged on 47% (the names with
+    no chop entries at all).
+
+    WHY THE CHOP CELL LOOKS BETTER THE WHOLE TIME. Tightening the gate
+    raises per-trade excess monotonically and shrinks the total:
+
+        no gate                310 chop trades   +2.74%    848 total points
+        pattern within 5        52 chop trades  +12.00%    624 total points
+        pattern within 3        42 chop trades  +12.17%    511 total points
+
+    A +12.00% mean at t = 4.49 is the best-looking cell this project has
+    produced and it is worth LESS than the +2.74% it replaced. Per-trade
+    excess rising as sample falls is the signature of selection, not edge;
+    the quantity that has to go up is the sum.
+
+    One engine artifact to know about when reading per-regime counts: this
+    backtest holds one position at a time, so blocking a chop entry frees
+    the slot for a later one elsewhere. Gating chop RAISES trending/down
+    from 2090 to 2231 trades and trending/up from 219 to 236. Per-regime
+    trade counts are therefore not independent across regimes, and a gate
+    on one regime silently rewrites the others.
+
+    THIS ALSO BREAKS THIS MODULE'S OWN RULE, deliberately. Every other
+    strategy here refuses to look at the regime, because each trade is
+    tagged with the regime active on entry downstream and gating internally
+    answers "which regime does this work in" by construction --
+    rsi_dip_recovery says so in its docstring and an HMA-filtered version
+    was dropped over it. The exception was made because the motivating
+    measurement was regime-split rather than pooled, and there is no single
+    answer to "should this gate be on". The price is that this strategy's
+    own per-regime results are no longer an independent measurement of
+    anything: the chop cell is a different strategy from the trending cells
+    by construction, and it was selected for. Judge it against
+    rsi_dip_recovery paired by ticker on pooled numbers, which is what the
+    verdict above does.
+
+    The regime is the confirmed one (regime.confirmed_regime, hysteresis
+    over `confirm_bars`), so it is causal -- bar t's label uses bars up to t
+    and nothing after. `pattern_lookback` of 1 requires the pattern on the
+    entry bar itself; higher values accept one within that many bars.
+    """
+    from .regime import RegimeThresholds, classify_regime, confirmed_regime
+
+    r = ind.rsi(df["Close"], rsi_window)
+    dipped_recently = (
+        (r < dip_threshold).rolling(dip_lookback, min_periods=1).max().shift(1).fillna(0).astype(bool)
+    )
+    entry = (r > confirm_threshold) & (r.shift(1) <= confirm_threshold) & dipped_recently
+
+    regime = confirmed_regime(
+        classify_regime(df, RegimeThresholds()), confirm_bars=confirm_bars
+    )["regime"].reindex(df.index)
+    gated = regime.isin(gated_regimes).fillna(False)
+
+    bullish = pat.reversal_signals(df, **pattern_kwargs)["bullish"]
+    if pattern_lookback > 1:
+        bullish = bullish.rolling(pattern_lookback, min_periods=1).max().astype(bool)
+
+    # Outside the gated regimes the entry is rsi_dip_recovery's, untouched.
+    entry = entry & (~gated | bullish.fillna(False))
+
+    exit_ = (r >= exit_rsi) & (r.shift(1) < exit_rsi)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -573,5 +672,6 @@ STRATEGIES = {
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
     "reversal_mean_reversion": reversal_mean_reversion,
+    "rsi_dip_regime_gated": rsi_dip_regime_gated,
     "sweep_outside": sweep_outside_reversal,
 }

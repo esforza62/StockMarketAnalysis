@@ -651,6 +651,102 @@ def rsi_dip_regime_gated(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def band_reversal_oversold(
+    df: pd.DataFrame,
+    window: int = 20,
+    num_std: float = 2.0,
+    rsi_window: int = 14,
+    oversold: float = 35.0,
+    rsi_lookback: int = 3,
+    exit_at: str = "opposite",
+    **pattern_kwargs,
+) -> pd.DataFrame:
+    """A reversal bar that pierced the lower 2-sigma band while RSI was oversold.
+
+    Entry needs all three: a bullish sweep-reclaim or outside bar (the turn),
+    the bar's LOW below the lower Bollinger band (the location), and RSI
+    already at an extreme (the momentum state). Exit at the opposite band.
+
+    MEASURE THE LOCATION ON THE LOW, THE RSI OFF THE SIGNAL BAR. The pattern's
+    confirming bar closes above the prior bar's high -- it is a rally by
+    construction, so it drags price back inside the band and lifts RSI out of
+    oversold on the very bar the pattern completes. A close-based band test
+    or a same-bar RSI test rejects almost everything it is meant to select;
+    reversal_mean_reversion documents the same failure costing it every trade
+    on AAPL. Hence `Low` against the band, and RSI's minimum over the
+    preceding `rsi_lookback` bars.
+
+    THE RESULT, 409 tickers of 4h bars (Yahoo hourly aggregated through
+    timeframes.session_resample), 2024-09-16 to 2026-09-10, ~989 bars each,
+    798 trades. Scored against SPY over each trade's OWN holding window,
+    which is the benchmark that fits a scanner -- the setup is not married to
+    a ticker, so the alternative use of the capital is the index, not
+    buy-and-hold of the same name:
+
+        setup    3.35% per trade vs SPY's 2.33%   alpha +1.01%  t = 2.39
+        random  -0.24% alpha, matched holding profile, same tickers
+
+        beat SPY on 65% of trades; matched random entries beat it on 46%
+
+    The RAW win rate is 72%, and it means nothing on its own: random entries
+    in the same names over the same durations won 52%, because the window was
+    a rising market. The 19-point gap in BEAT-SPY rate is the edge.
+
+    Against the excess_cli baseline instead (mean forward return of holding
+    the same bars from any bar in the same regime) it is +1.67% per trade,
+    t = 3.40 clustered by ticker, and total excess rises with the filter --
+    332 to 1333 points -- which is what distinguishes a real filter from
+    the sample-shrinking kind (see rsi_dip_regime_gated for the other kind).
+
+    OUT OF SAMPLE, split at 2025-09-15 with no retuning: H1 +1.58% excess
+    (t = 2.01, 445 trades), H2 +1.79% (t = 2.30, 353). Paired against the
+    unfiltered band entry within each half: +1.63 points (t = 3.86) and
+    +1.21 (t = 2.65). Both halves, same sign, similar size.
+
+    SLIPPAGE HALVES IT BY 25 BPS A SIDE. Alpha runs +1.01% frictionless,
+    +0.91% (t = 2.14) at 5 bps, +0.81% (t = 1.88) at 10 bps, +0.50%
+    (t = 1.12) at 25 bps. Tradeable at large-cap liquidity; probably not in
+    thin names, where a ~40-bar 4h hold still pays the spread twice.
+
+    WHAT IS NOT ESTABLISHED. Run as a portfolio across the universe it
+    supports only about 4-8 concurrent positions -- capital is 83% deployed
+    at 5 slots and 54% at 40 -- and it clears SPY in both halves ONLY at the
+    5-slot configuration, on 53 and 62 trades, with wildly unstable margins
+    (+3.8 then +19.2 points). Two flaws make even that optimistic: the
+    drawdowns behind it are marked at entry events with open positions held
+    at cost, so they are floors rather than maxima; and with 683 of 798
+    signals skipped for want of a slot, WHICH ones get taken is decided by
+    arrival order, not by quality. Treat the per-trade alpha as the finding
+    and the portfolio numbers as unvalidated.
+
+    The edge is also carried by magnitude, not breadth -- it beats the
+    unfiltered entry on only 45% and 42% of tickers per half while winning
+    on average, so it will look wrong on most individual names.
+
+    INTERVAL-SPECIFIC, like every bar-shape signal here. On daily bars the
+    same rule is worth +0.02% excess. patterns.py explains why a result on
+    one interval says nothing about another. This is a 4h finding.
+
+    exit_at="opposite" closes at the upper band; "basis" closes at the
+    middle band, which is the intuitive mean-reversion target and measurably
+    too early -- same entries, +0.19% excess against -0.02% on 4h, and
+    +0.79% against +0.02% on daily.
+    """
+    if exit_at not in ("opposite", "basis"):
+        raise ValueError(f"exit_at must be opposite/basis, got {exit_at!r}")
+
+    bb = ind.bollinger_bands(df["Close"], window, num_std)
+    r = ind.rsi(df["Close"], rsi_window)
+    bullish = pat.reversal_signals(df, **pattern_kwargs)["bullish"]
+
+    entry = bullish & (df["Low"] < bb["lower"]) & (r.rolling(rsi_lookback).min() <= oversold)
+    if exit_at == "opposite":
+        exit_ = df["Close"] >= bb["upper"]
+    else:
+        exit_ = (df["Close"] >= bb["mid"]) & (df["Close"].shift(1) < bb["mid"].shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -673,5 +769,6 @@ STRATEGIES = {
     "rsi_dual_hma": rsi_dual_hma_trend,
     "reversal_mean_reversion": reversal_mean_reversion,
     "rsi_dip_regime_gated": rsi_dip_regime_gated,
+    "band_reversal_oversold": band_reversal_oversold,
     "sweep_outside": sweep_outside_reversal,
 }

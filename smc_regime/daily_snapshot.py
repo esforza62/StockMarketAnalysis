@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -62,7 +63,9 @@ def main() -> None:
     parser.add_argument("--log-file", default="backtest_logs/regime_strategy_log.jsonl", help="JSONL file to append results to")
     parser.add_argument("--db-file", default=str(db_module.DEFAULT_DB_PATH), help="SQLite file to write trade-level rows to")
     parser.add_argument("--skip-metadata", action="store_true", help="skip refreshing ticker exchange/sector metadata")
-    parser.add_argument("--skip-valuation", action="store_true", help="skip refreshing forward/trailing P/E valuation data")
+    parser.add_argument("--skip-valuation", action="store_true", help="skip refreshing forward/trailing P/E and next earnings date")
+    parser.add_argument("--skip-news", action="store_true", help="skip refreshing headline sentiment (needs TIINGO_API_KEY)")
+    parser.add_argument("--news-days", type=int, default=7, help="how many days of headlines the sentiment read covers")
     parser.add_argument("--start-date", default=None, help="fixed calendar anchor (e.g. 2019-01-01) instead of the default rolling lookback -- use for a full rebuild")
     parser.add_argument(
         "--rolling-intervals", default=None,
@@ -98,6 +101,19 @@ def main() -> None:
         results = valuation_module.fetch_valuation_batch(tickers)
         db_module.upsert_valuation(conn, results, datetime.now(timezone.utc).isoformat())
         print(f"valuation: {len(results)}/{len(tickers)} tickers")
+
+    if not args.skip_news:
+        # Never fatal: fetch_sentiment_batch swallows per-ticker failures and
+        # returns what it got, so a bad key or a Tiingo outage costs the run
+        # its news column and nothing else. Zero back is worth saying out
+        # loud though -- that is the shape a missing TIINGO_API_KEY takes,
+        # and it would otherwise pass as "quiet news week" forever.
+        from . import news as news_module
+        news_rows = news_module.fetch_sentiment_batch(tickers, days=args.news_days)
+        db_module.upsert_news_sentiment(conn, news_rows, args.news_days, datetime.now(timezone.utc).isoformat())
+        print(f"news: {len(news_rows)}/{len(tickers)} tickers")
+        if not news_rows:
+            print("news: nothing came back -- check TIINGO_API_KEY", file=sys.stderr)
 
     with log_path.open("a") as f:
         for interval in intervals:

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
@@ -47,12 +48,29 @@ def score_headline(text: str) -> float:
     return _analyzer.polarity_scores(text)["compound"]
 
 
+# VADER's own convention: +/-0.05 separates sentiment from neutral, and
+# +/-0.5 is where it calls a score strong. Splitting at both gives five
+# bands off one number, with no extra model and no extra API call.
+#
+# These describe LANGUAGE, not materiality. "very negative" means the
+# headline reached for strong negative words -- it cannot tell a writedown
+# from a reporter choosing "plunges", and it has no idea how big the number
+# was. That is precisely why news is reported here and never scored.
+_BANDS = [
+    (0.50, "very positive"),
+    (0.05, "positive"),
+    (-0.05, "neutral"),
+    (-0.50, "negative"),
+]
+_FLOOR_LABEL = "very negative"
+
+
 def _label(compound: float) -> str:
-    if compound >= 0.05:
-        return "positive"
-    if compound <= -0.05:
-        return "negative"
-    return "neutral"
+    """One of the five bands above, from a VADER compound score in [-1, 1]."""
+    for threshold, label in _BANDS:
+        if compound >= threshold:
+            return label
+    return _FLOOR_LABEL
 
 
 def fetch_news(ticker: str, days: int = 7, limit: int = 20) -> list[dict]:
@@ -116,6 +134,48 @@ def ticker_sentiment(ticker: str, days: int = 7, limit: int = 20) -> dict:
         "counts": counts,
         "articles": articles,
     }
+
+
+_FETCH_WORKERS = 8
+
+
+def fetch_sentiment_batch(tickers: list[str], days: int = 7, limit: int = 20) -> dict[str, dict]:
+    """Headline sentiment for a whole universe, concurrently.
+
+    One request per ticker rather than one batched request over all of
+    them: Tiingo's news endpoint takes a comma-separated `tickers` list,
+    but a shared `limit` across 400+ names would silently starve the
+    thinly-covered ones -- the heavily-covered tickers would fill the
+    response and a quiet small-cap would come back with nothing, which
+    reads identically to "no news" and is not the same thing.
+
+    A ticker whose request fails is absent from the result, exactly like
+    valuation: callers treat missing news as no news, never as bad news.
+    The returned dicts drop the per-article detail and keep the summary --
+    the nightly stores one row per ticker, not an article archive.
+    """
+    if not os.environ.get("TIINGO_API_KEY"):
+        # Checked once here rather than discovered 400 times inside the
+        # pool: every worker would raise the same RuntimeError and every
+        # one would be swallowed, so the caller gets the same empty dict
+        # either way -- just after firing a pool's worth of doomed work.
+        return {}
+
+    results: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=_FETCH_WORKERS) as pool:
+        futures = {pool.submit(ticker_sentiment, t, days, limit): t for t in tickers}
+        for future in as_completed(futures):
+            ticker = futures[future]
+            try:
+                data = future.result()
+            except Exception:
+                continue
+            results[ticker] = {
+                "article_count": data["article_count"],
+                "avg_compound": data["avg_compound"],
+                "label": data["label"],
+            }
+    return results
 
 
 def main() -> None:

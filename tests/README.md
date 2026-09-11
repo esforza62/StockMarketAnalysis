@@ -8,4 +8,10 @@ error. `test_grade_backfill.py` checks exactly that by grading a date twice,
 once with later bars present and once with them removed, and requiring the
 two results to be identical.
 
+`test_setup_context.py` guards the other silent failure in the same chain:
+news sentiment and the earnings date are shown on the dashboard but must
+never move a grade, and nothing about a row would look wrong if they
+started to. It scores one setup twice, with and without that context, and
+requires every component and the letter to match.
+
 Bars are synthetic throughout -- these run without a Tiingo key.

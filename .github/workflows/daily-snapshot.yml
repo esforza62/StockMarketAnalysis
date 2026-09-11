@@ -50,6 +50,15 @@ jobs:
       - name: Capture setup grades
         run: python -m smc_regime.capture_grades --interval 1d
 
+      # Yahoo publishes only the UPCOMING report date and no source carries
+      # historical ones, so the only way to get them is to write tonight's
+      # down before it happens. Recorded on change rather than nightly, so
+      # this stays a few thousand rows a year rather than 9 MB of unchanged
+      # repetition. Its own step, like the grades: a failure here must not
+      # take down the snapshot or the database it publishes.
+      - name: Capture earnings dates
+        run: python -m smc_regime.earnings_history --capture
+
       # backtest_logs/smc_regime.db is rewritten in full every run and
       # doesn't diff well as a git blob -- committing it directly would
       # grow repo history by ~one full copy per day and risks hitting
@@ -72,7 +81,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl smc_regime/data/exchange_cache.json
+          git add backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl backtest_logs/earnings_history.jsonl smc_regime/data/exchange_cache.json
           git diff --cached --quiet && exit 0
 
           git commit -m "Daily regime-strategy snapshot for $(date -u +%Y-%m-%d)"
@@ -98,7 +107,8 @@ jobs:
             fi
             python -m smc_regime.normalize_log
             python -m smc_regime.grade_history
-            LOGS="backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl"
+            python -m smc_regime.earnings_history
+            LOGS="backtest_logs/regime_strategy_log.jsonl backtest_logs/setup_grade_history.jsonl backtest_logs/earnings_history.jsonl"
             if ! git diff --quiet -- $LOGS; then
               git add $LOGS
               git commit --amend --no-edit

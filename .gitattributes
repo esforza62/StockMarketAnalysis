@@ -7,3 +7,8 @@ backtest_logs/regime_strategy_log.jsonl merge=union
 # ticker), so two overlapping runs each add their own rows rather than
 # conflicting. smc_regime.grade_history re-sorts and de-duplicates after.
 backtest_logs/setup_grade_history.jsonl merge=union
+
+# Append-only like the logs above: one row per earnings-date CHANGE, so two
+# overlapping runs each add their own rather than conflicting.
+# smc_regime.earnings_history re-sorts and de-duplicates after.
+backtest_logs/earnings_history.jsonl merge=union

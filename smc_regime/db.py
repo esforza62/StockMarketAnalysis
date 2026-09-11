@@ -68,10 +68,30 @@ CREATE TABLE IF NOT EXISTS latest_regime (
     PRIMARY KEY (run_id, ticker)
 );
 
+-- Everything Yahoo's quoteSummary gives us per ticker, fetched in one
+-- request (see valuation.py). earnings_is_estimate is stored rather than
+-- collapsed into the date because Yahoo infers many dates from last
+-- year's cadence, and a reader sizing a position needs to know which
+-- kind of date they are looking at.
 CREATE TABLE IF NOT EXISTS valuation (
     ticker TEXT PRIMARY KEY,
     trailing_pe REAL,
     forward_pe REAL,
+    earnings_date TEXT,
+    earnings_is_estimate INTEGER,
+    fetched_at TEXT
+);
+
+-- Headline sentiment per ticker from the last N days (see news.py).
+-- Reported, never scored -- so a stale or missing row costs a ticker
+-- nothing, and the table is keyed on ticker alone rather than run_id,
+-- which is reused across rebuilds.
+CREATE TABLE IF NOT EXISTS news_sentiment (
+    ticker TEXT PRIMARY KEY,
+    article_count INTEGER,
+    avg_compound REAL,
+    label TEXT,
+    window_days INTEGER,
     fetched_at TEXT
 );
 
@@ -104,8 +124,17 @@ _TECHNICAL_COLUMNS = [
 ]
 
 
-def _migrate_technicals(conn: sqlite3.Connection) -> None:
-    """Add technical columns introduced after a database was first created.
+# Columns added to an existing table after the fact, as {name: SQL type}.
+# A new table needs no entry here -- CREATE TABLE IF NOT EXISTS creates it
+# whole; only columns bolted onto a table that already exists do.
+_ADDED_COLUMNS = {
+    "technicals": {c: "REAL" for c in _TECHNICAL_COLUMNS},
+    "valuation": {"earnings_date": "TEXT", "earnings_is_estimate": "INTEGER"},
+}
+
+
+def _migrate_columns(conn: sqlite3.Connection) -> None:
+    """Add columns introduced after a database was first created.
 
     CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so a column
     added to _SCHEMA never reaches a database that predates it -- the writer
@@ -114,10 +143,13 @@ def _migrate_technicals(conn: sqlite3.Connection) -> None:
     stay NULL until the next snapshot fills them, which every reader already
     treats as neutral.
     """
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(technicals)")}
-    for column in _TECHNICAL_COLUMNS:
-        if column not in existing:
-            conn.execute(f"ALTER TABLE technicals ADD COLUMN {column} REAL")
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if not existing:
+            continue  # table not created yet; _SCHEMA builds it complete
+        for column, sql_type in columns.items():
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}")
     conn.commit()
 
 
@@ -126,7 +158,7 @@ def connect(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript(_SCHEMA)
-    _migrate_technicals(conn)
+    _migrate_columns(conn)
     return conn
 
 
@@ -204,21 +236,31 @@ def upsert_ticker_metadata(conn: sqlite3.Connection, rows: list[dict[str, str]],
 
 
 def upsert_valuation(conn: sqlite3.Connection, rows: dict[str, dict], fetched_at: str) -> None:
-    """`rows` maps ticker -> {trailing_pe, forward_pe} (valuation.fetch_valuation_batch()'s
-    shape). A ticker whose fetch failed simply isn't in `rows` and its
-    existing row (if any) is left untouched -- a transient fetch failure
-    shouldn't erase a previously-known value."""
+    """`rows` maps ticker -> {trailing_pe, forward_pe, earnings_date,
+    earnings_is_estimate} (valuation.fetch_valuation_batch()'s shape). A
+    ticker whose fetch failed simply isn't in `rows` and its existing row
+    (if any) is left untouched -- a transient fetch failure shouldn't erase
+    a previously-known value."""
     if not rows:
         return
     conn.executemany(
-        """INSERT INTO valuation (ticker, trailing_pe, forward_pe, fetched_at)
-           VALUES (:ticker, :trailing_pe, :forward_pe, :fetched_at)
+        """INSERT INTO valuation (ticker, trailing_pe, forward_pe, earnings_date, earnings_is_estimate, fetched_at)
+           VALUES (:ticker, :trailing_pe, :forward_pe, :earnings_date, :earnings_is_estimate, :fetched_at)
            ON CONFLICT(ticker) DO UPDATE SET
                trailing_pe = excluded.trailing_pe,
                forward_pe = excluded.forward_pe,
+               earnings_date = excluded.earnings_date,
+               earnings_is_estimate = excluded.earnings_is_estimate,
                fetched_at = excluded.fetched_at""",
         [
-            {"ticker": ticker.upper(), "trailing_pe": data.get("trailing_pe"), "forward_pe": data.get("forward_pe"), "fetched_at": fetched_at}
+            {
+                "ticker": ticker.upper(),
+                "trailing_pe": data.get("trailing_pe"),
+                "forward_pe": data.get("forward_pe"),
+                "earnings_date": data.get("earnings_date"),
+                "earnings_is_estimate": None if data.get("earnings_is_estimate") is None else int(data["earnings_is_estimate"]),
+                "fetched_at": fetched_at,
+            }
             for ticker, data in rows.items()
         ],
     )
@@ -235,7 +277,45 @@ def get_valuation(conn: sqlite3.Connection, ticker: str) -> dict | None:
 
 
 def all_valuation(conn: sqlite3.Connection) -> pd.DataFrame:
-    return pd.read_sql_query("SELECT ticker, trailing_pe, forward_pe FROM valuation", conn)
+    return pd.read_sql_query(
+        "SELECT ticker, trailing_pe, forward_pe, earnings_date, earnings_is_estimate FROM valuation", conn
+    )
+
+
+def upsert_news_sentiment(conn: sqlite3.Connection, rows: dict[str, dict], window_days: int, fetched_at: str) -> None:
+    """`rows` maps ticker -> news.ticker_sentiment()'s summary shape. Same
+    leave-it-alone-on-failure rule as valuation: an absent ticker keeps
+    whatever it had rather than being blanked by one bad night."""
+    if not rows:
+        return
+    conn.executemany(
+        """INSERT INTO news_sentiment (ticker, article_count, avg_compound, label, window_days, fetched_at)
+           VALUES (:ticker, :article_count, :avg_compound, :label, :window_days, :fetched_at)
+           ON CONFLICT(ticker) DO UPDATE SET
+               article_count = excluded.article_count,
+               avg_compound = excluded.avg_compound,
+               label = excluded.label,
+               window_days = excluded.window_days,
+               fetched_at = excluded.fetched_at""",
+        [
+            {
+                "ticker": ticker.upper(),
+                "article_count": data.get("article_count"),
+                "avg_compound": data.get("avg_compound"),
+                "label": data.get("label"),
+                "window_days": window_days,
+                "fetched_at": fetched_at,
+            }
+            for ticker, data in rows.items()
+        ],
+    )
+    conn.commit()
+
+
+def all_news_sentiment(conn: sqlite3.Connection) -> pd.DataFrame:
+    return pd.read_sql_query(
+        "SELECT ticker, article_count, avg_compound, label, window_days, fetched_at FROM news_sentiment", conn
+    )
 
 
 def write_latest_regime(conn: sqlite3.Connection, run_at: str, interval: str, latest_regime: pd.DataFrame) -> None:

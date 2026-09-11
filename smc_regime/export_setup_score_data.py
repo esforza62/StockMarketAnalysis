@@ -28,6 +28,20 @@ from .setup_score import (
 
 _GRADE_ORDER = ["A", "B", "C", "D"]
 
+
+def _cell(value, digits: int | None = None):
+    """A scored frame's cell as plain JSON.
+
+    pandas turns the None in a mostly-string column into a float NaN when
+    it builds the frame, so a ticker with no earnings date arrives here as
+    NaN rather than the None score_ticker put in -- and json.dumps writes
+    that out as a bare `NaN`, which is not JSON and which JSON.parse
+    rejects. Everything optional goes through here on the way out.
+    """
+    if value is None or value != value:
+        return None
+    return round(value, digits) if digits is not None else value
+
 # Rendered in this order in the dashboard's expanded row: the four technical
 # reads that decide whether the setup is worth taking first, then the
 # contextual modifiers.
@@ -59,11 +73,17 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
     # mostly neutral filler -- the dashboard warns rather than presenting
     # them as real. Snapshots taken before `technicals` existed have none.
     technicals_covered = len(db_module.all_technicals(conn, interval))
+    # News is optional context, so its coverage is reported rather than
+    # warned about -- but a run where TIINGO_API_KEY was missing produces
+    # zero rows, which on the page looks exactly like a universe with no
+    # headlines. The count is what tells those two apart.
+    news = db_module.all_news_sentiment(conn)
+    news_covered = int((news["article_count"] > 0).sum()) if not news.empty else 0
     conn.close()
 
     scores = compute_universe_setup_scores(db_path=db_path, interval=interval, min_trades=min_trades)
     if scores.empty:
-        return {"run_at": run_at, "interval": interval, "min_trades": min_trades, "ticker_count": 0, "technicals_covered": technicals_covered, "grade_counts": {}, "sectors": [], "tickers": []}
+        return {"run_at": run_at, "interval": interval, "min_trades": min_trades, "ticker_count": 0, "technicals_covered": technicals_covered, "news_covered": news_covered, "grade_counts": {}, "sectors": [], "tickers": []}
 
     grade_counts = Counter(scores["grade"])
     sectors = sorted(scores["sector"].unique().tolist())
@@ -97,8 +117,18 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
                 # Reported, not scored -- which strategy to use once the
                 # setup itself is worth taking. See setup_score's docstring.
                 "strategy": r["strategy_info"],
-                "return_1w": None if r["return_1w"] is None or r["return_1w"] != r["return_1w"] else round(r["return_1w"], 1),
-                "return_1m": None if r["return_1m"] is None or r["return_1m"] != r["return_1m"] else round(r["return_1m"], 1),
+                "return_1w": _cell(r["return_1w"], 1),
+                "return_1m": _cell(r["return_1m"], 1),
+                # Also reported, never scored. Both go out as raw facts --
+                # the earnings DATE and the timestamp the news was read --
+                # and the page derives "in 6 days" / "3 days stale" against
+                # the viewer's own clock. A countdown baked in here would be
+                # wrong by however long it has been since the export ran,
+                # and wrong in the direction that matters: it would keep
+                # claiming an earnings date is ahead after it has passed.
+                "news": _cell(r["news"]),
+                "earnings_date": _cell(r["earnings_date"]),
+                "earnings_is_estimate": _cell(r["earnings_is_estimate"]),
             }
         )
 
@@ -108,6 +138,7 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
         "min_trades": min_trades,
         "ticker_count": len(tickers),
         "technicals_covered": technicals_covered,
+        "news_covered": news_covered,
         "grade_counts": {g: grade_counts.get(g, 0) for g in _GRADE_ORDER},
         "sectors": sectors,
         "tickers": tickers,

@@ -449,6 +449,17 @@ def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tu
     return level_pts + dir_pts, f"{level_detail}; {dir_detail}"
 
 
+def _or_none(value):
+    """pandas NA -> None, so a missing DB cell serialises as JSON null
+    rather than a NaN that json.dumps writes out as bare `NaN`."""
+    return None if value is None or pd.isna(value) else value
+
+
+def _bool_or_none(value):
+    """SQLite stores booleans as 0/1; None stays None (Yahoo not saying)."""
+    return None if value is None or pd.isna(value) else bool(value)
+
+
 def _technical_components(snapshot: dict, regime: str) -> dict[str, tuple[float, int, str]]:
     """The four technical components as {name: (points, max, detail)}, from
     one technical_snapshot() reading. Shared by the live single-ticker path
@@ -609,6 +620,8 @@ def score_ticker(
     valuation: tuple | None = None,
     valuation_missing_detail: str = "no valuation data yet for this ticker",
     best: dict | None = None,
+    news: dict | None = None,
+    earnings: tuple | None = None,
 ) -> dict:
     """Score one ticker from already-gathered inputs.
 
@@ -627,7 +640,17 @@ def score_ticker(
 
     `best` only ever reaches _strategy_info(), which is reported and scores
     zero -- so a caller with no trade history (the backfill) can leave it
-    None without affecting the grade.
+    None without affecting the grade. `news` and `earnings` are the same:
+    carried onto the row for the dashboard to show and worth exactly zero
+    points, so leaving them None changes no grade anywhere.
+
+    They stay unscored deliberately. Headline sentiment measures the
+    LANGUAGE a reporter chose, not what happened (see news.py), and an
+    earnings date is a schedule, not a quality -- a name six days from
+    reporting is not a worse setup than the same name six weeks out, it is
+    the same setup carrying a different risk the trader has to size for.
+    Both are things to look at before taking a trade; neither is evidence
+    about whether the setup is good.
     """
     tech = _technical_components(snapshot, regime)
     streak_pts = _streak_points(int(streak_bars))
@@ -670,6 +693,14 @@ def score_ticker(
         # for reading the setup, not part of judging it.
         "return_1w": snapshot.get("return_1w"),
         "return_1m": snapshot.get("return_1m"),
+        # Same treatment: shown, never weighed. See the docstring.
+        "news": news,
+        # The DATE, not a countdown. A stored countdown is wrong the day
+        # after it is written, and these rows outlive the run that made
+        # them -- the days-to-earnings figure is derived wherever it is
+        # displayed, against that moment's date.
+        "earnings_date": (earnings or (None, None))[0],
+        "earnings_is_estimate": (earnings or (None, None))[1],
     }
     for name, (pts, _, detail) in tech.items():
         row[f"{name}_points"] = round(pts, 1)
@@ -696,6 +727,11 @@ def compute_universe_setup_scores(
     a ticker (no technicals row from an older snapshot, missing daily/weekly
     regime, no valuation row) -- consistent with how missing peer data is
     treated as neutral, not as evidence against the setup.
+
+    News sentiment and the earnings date are read the same way but score
+    nothing: a ticker with no news row simply shows no news, which is the
+    honest reading -- a failed fetch and a quiet week are indistinguishable
+    from here, and neither is bad news.
     """
     conn = db_module.connect(db_path)
     regimes = db_module.all_latest_regimes(conn, interval)
@@ -709,6 +745,8 @@ def compute_universe_setup_scores(
     weekly_by_ticker = weekly_regimes.set_index("ticker") if not weekly_regimes.empty else None
     sector_counts, industry_counts = db_module.sector_industry_direction_counts(conn, interval="1d")
     valuation_by_ticker = db_module.all_valuation(conn).set_index("ticker")
+    news = db_module.all_news_sentiment(conn)
+    news_by_ticker = news.set_index("ticker") if not news.empty else None
     technicals = db_module.all_technicals(conn, interval)
     technicals_by_ticker = technicals.set_index("ticker") if not technicals.empty else None
 
@@ -729,8 +767,24 @@ def compute_universe_setup_scores(
         if ticker in valuation_by_ticker.index:
             v_row = valuation_by_ticker.loc[ticker]
             valuation = (v_row["trailing_pe"], v_row["forward_pe"])
+            earnings = (_or_none(v_row["earnings_date"]), _bool_or_none(v_row["earnings_is_estimate"]))
         else:
             valuation = None
+            earnings = None
+
+        ticker_news = None
+        if news_by_ticker is not None and ticker in news_by_ticker.index:
+            n_row = news_by_ticker.loc[ticker]
+            ticker_news = {
+                "article_count": int(n_row["article_count"]),
+                # float(), not the numpy scalar pandas hands back: this
+                # lands straight in the dashboard JSON and json.dumps has no
+                # encoder for numpy.float64.
+                "avg_compound": None if pd.isna(n_row["avg_compound"]) else float(n_row["avg_compound"]),
+                "label": n_row["label"],
+                "window_days": int(n_row["window_days"]),
+                "fetched_at": n_row["fetched_at"],
+            }
 
         rows.append(
             score_ticker(
@@ -747,6 +801,8 @@ def compute_universe_setup_scores(
                 industry_counts=industry_counts,
                 valuation=valuation,
                 best=best,
+                news=ticker_news,
+                earnings=earnings,
             )
         )
 

@@ -5,6 +5,10 @@ Long-only unless a strategy asks otherwise. A signal frame carrying
 single-position long/short simulation; a frame without them takes exactly
 the path it always did, so every existing strategy's trade log is
 unchanged bar for bar.
+
+Slippage is off by default (slippage_pct=0.0) so every historical number in
+this repo stays comparable; passing it makes each fill the worse one, on both
+entry and exit and on every exit path.
 """
 from __future__ import annotations
 
@@ -59,12 +63,33 @@ def _has_short_side(signals: pd.DataFrame) -> bool:
     return len(present) == 2
 
 
+def _slipped(price: float, side: str, opening: bool, slippage_pct: float) -> float:
+    """The fill you actually get, which is always the worse one.
+
+    Opening a long or closing a short means BUYING, so you pay up; closing a
+    long or opening a short means SELLING, so you receive less. One round
+    trip therefore costs 2 x slippage_pct regardless of side, which is the
+    point: a strategy holding 40 bars wears it once, a strategy holding 4
+    bars wears it ten times as often per unit of time.
+
+    Applied inside open/close rather than at the signal, so it covers every
+    exit path -- signal, stop, max-hold and reversal -- identically. A stop
+    is a level you wanted, not a fill you got.
+    """
+    if not slippage_pct:
+        return price
+    fraction = slippage_pct / 100
+    buying = (opening and side == LONG) or (not opening and side == SHORT)
+    return price * (1 + fraction) if buying else price * (1 - fraction)
+
+
 def run_backtest(
     df: pd.DataFrame,
     signals: pd.DataFrame,
     stop_loss_pct: float | None = None,
     stop_loss_pct_series: pd.Series | None = None,
     max_hold_bars: int | None = None,
+    slippage_pct: float = 0.0,
 ) -> list[Trade]:
     """Simulate a single-position strategy from entry/exit signals.
 
@@ -114,6 +139,7 @@ def run_backtest(
 
     def open_position(date, price: float, new_side: str) -> None:
         nonlocal in_position, side, entry_date, entry_price, stop_price, bars_held
+        price = _slipped(price, new_side, True, slippage_pct)
         in_position, side, entry_date, entry_price, bars_held = True, new_side, date, price, 0
         pct = stop_loss_pct
         if stop_loss_pct_series is not None:
@@ -123,7 +149,7 @@ def run_backtest(
 
     def close_position(date, price: float) -> None:
         nonlocal in_position
-        trades.append(Trade(entry_date, date, entry_price, price, side))
+        trades.append(Trade(entry_date, date, entry_price, _slipped(price, side, False, slippage_pct), side))
         in_position = False
 
     for date, row in signals.iterrows():
@@ -168,9 +194,11 @@ def backtest_strategy(
     stop_loss_pct: float | None = None,
     stop_loss_pct_series: pd.Series | None = None,
     max_hold_bars: int | None = None,
+    slippage_pct: float = 0.0,
 ) -> list[Trade]:
     signals = STRATEGIES[strategy](df)
     return run_backtest(
         df, signals,
-        stop_loss_pct=stop_loss_pct, stop_loss_pct_series=stop_loss_pct_series, max_hold_bars=max_hold_bars,
+        stop_loss_pct=stop_loss_pct, stop_loss_pct_series=stop_loss_pct_series,
+        max_hold_bars=max_hold_bars, slippage_pct=slippage_pct,
     )

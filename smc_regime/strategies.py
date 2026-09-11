@@ -428,6 +428,130 @@ def sweep_outside_reversal(
     )
 
 
+def reversal_mean_reversion(
+    df: pd.DataFrame,
+    rsi_window: int = 14,
+    oversold: float = 40.0,
+    stretch_lookback: int = 3,
+    mean_window: int = 20,
+    exit_on: str = "mean",
+    exit_rsi: float = 70.0,
+    **pattern_kwargs,
+) -> pd.DataFrame:
+    """A bullish reversal bar, but only where price is already stretched.
+
+    The two ingredients were measured separately here first and neither
+    result was neutral. sweep_outside_reversal's patterns do NOT beat random
+    entries with the same holding profile -- a reversal shape says the last
+    three bars resolved upward and nothing about where that happened. Mean
+    reversion is the opposite: excess_cli found rsi in choppy at +5.46%
+    excess per trade (t = 2.44), and rsi in every other regime at nothing
+    much. So this asks a narrow question -- does the SHAPE add anything on
+    top of the LOCATION? Entry needs both: RSI at or below `oversold` (the
+    stretch) and a bullish sweep-reclaim or outside bar (the turn).
+
+    It differs from rsi_dip_recovery in what confirms the turn, not in what
+    it trades. That strategy waits for the INDICATOR to recover back through
+    a threshold; this waits for a BAR to reject the low while the indicator
+    is still stretched.
+
+    MEASURING THE STRETCH BEFORE THE SIGNAL BAR IS NOT A FUDGE, IT IS THE
+    ONLY WAY THE QUESTION IS ASKABLE. A bullish sweep-reclaim closes above
+    the first candle's high -- it is a rally by construction, and that rally
+    lifts RSI out of oversold on the very bar the pattern completes. Across
+    AAPL/NVDA/SPY/KHC since 2019 the confirmation bar's own RSI has a MEDIAN
+    near 59 and clears 35 on at most one signal per ticker, so the same-bar
+    conjunction is not a strict strategy but an empty one (literally zero
+    trades on AAPL). Taking the minimum RSI over the preceding
+    `stretch_lookback` bars asks what was intended: was price stretched
+    going INTO this reversal. The gate still keeps only about one bullish
+    pattern in six.
+
+    THE RESULT: THE BEST ENTRY SIGNAL MEASURED HERE, AND THE WORST STRATEGY.
+    Both are true. Over 409 tickers of daily bars since 2019 (Yahoo
+    adjusted), against the excess_cli baseline -- the mean return of holding
+    the same number of bars from any bar in the same regime:
+
+      pooled          3852 trades  +1.31% vs +1.06% baseline  excess +0.26%  t = 1.40
+      choppy           844 trades                             excess +1.02%  t = 3.46
+      trending/down   2659 trades                             excess -0.04%  t = -0.51
+
+    The choppy cell is the cleanest this project has produced: 362 tickers,
+    65% of them positive, p ~= 0.0005, which survives a Bonferroni
+    correction over the ~30 cells examined (threshold 0.0017). The
+    trending/down cell is the more USEFUL finding -- it is the only
+    mean-reversion variant here that does not bleed in downtrends, against
+    rsi_dip_recovery at -0.95% (t = -2.17), rsi at -0.65% (t = -2.10) and
+    sweep_outside at -0.80% (t = -2.11). Requiring a bar that reclaims the
+    swept low is what separates "oversold and turning" from "oversold and
+    still going", which RSI alone cannot do.
+
+    AND IT MAKES NO MONEY. Market exposure is 5.7% -- 9.5 trades per ticker
+    averaging 11 bars -- so the strong cell fires 0.30 times per ticker per
+    year at +1.02%, or about 0.31% of annual alpha. Median CAGR is 1.4%
+    against 14.4% for holding the stock and 17.2% for SPY, and ZERO of 409
+    tickers beat the index. Nor is there a knob: exit_on="rsi" lifts median
+    CAGR to 5.6% but drops the choppy t to 1.60, a looser 45/5 gate nearly
+    doubles trades for excess +0.23% (t = 1.21), and loosening AND holding
+    longer reaches 7.3% CAGR at excess -0.02%. Every route to more money
+    costs the edge, which is itself evidence the edge is specific and thin.
+    Note too that plain rsi in chop scores +5.46% per trade against this
+    +1.02%: the pattern gate buys consistency (higher t, more tickers
+    positive) and pays for it in magnitude.
+
+    Read that CAGR comparison carefully before dismissing the signal: it
+    charges 0% for time in cash, so it structurally punishes anything with
+    low exposure. The honest reading is "this is not a way to be invested",
+    not "the entries are bad". The shape of the result -- excellent timing,
+    negligible exposure -- is a timing overlay, not a strategy: a trigger
+    for a name already worth owning rather than something that picks what to
+    own. No costs or slippage are modelled anywhere above, and an 11-bar
+    average hold is far more sensitive to that than rsi_dip_recovery's 165.
+
+    exit_on="mean" closes when price closes back above its `mean_window`
+    EMA -- the reversion trade's own thesis, completed -- rather than
+    rsi_dip_recovery's overbought exit, which turns a reversion trade into a
+    trend trade. "rsi" reproduces that overbought exit for comparison and
+    "pattern" exits on the bearish mirror, as sweep_outside_reversal does.
+
+    Long only, like every strategy here. Pattern keyword arguments pass
+    through to patterns.reversal_signals untouched.
+    """
+    if exit_on not in ("mean", "rsi", "pattern"):
+        raise ValueError(f"exit_on must be mean/rsi/pattern, got {exit_on!r}")
+
+    r = ind.rsi(df["Close"], rsi_window)
+    signals = pat.reversal_signals(df, **pattern_kwargs)
+    mean = ind.ema(df["Close"], mean_window)
+
+    # The stretch is measured BEFORE the confirmation bar, never on it.
+    # A bullish sweep-reclaim closes above the first candle's high -- it is
+    # a rally by definition, and that rally lifts RSI out of oversold on
+    # the very bar the pattern completes. Measured across AAPL/NVDA/SPY/KHC
+    # since 2019, the confirmation bar's own RSI has a MEDIAN near 59 and
+    # clears 35 on at most one signal per ticker, so the naive same-bar
+    # conjunction is not a strict strategy -- it is an empty one. Taking
+    # the minimum RSI over the preceding `stretch_lookback` bars asks the
+    # question that was actually intended: was price stretched going INTO
+    # this reversal.
+    stretched = r.rolling(stretch_lookback).min().shift(1) <= oversold
+    entry = signals["bullish"] & stretched
+
+    if exit_on == "mean":
+        # Crossing back up through the mean, not merely sitting above it:
+        # without the shift the exit is true on every bar of a position
+        # entered above its own mean, which cannot happen here (an oversold
+        # RSI and a close above the EMA rarely coincide) but would silently
+        # become an immediate-exit bug if `oversold` were ever loosened.
+        exit_ = (df["Close"] >= mean) & (df["Close"].shift(1) < mean.shift(1))
+    elif exit_on == "rsi":
+        exit_ = (r >= exit_rsi) & (r.shift(1) < exit_rsi)
+    else:
+        exit_ = signals["bearish"]
+
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -448,5 +572,6 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "reversal_mean_reversion": reversal_mean_reversion,
     "sweep_outside": sweep_outside_reversal,
 }

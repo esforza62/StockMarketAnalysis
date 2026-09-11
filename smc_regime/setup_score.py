@@ -706,6 +706,9 @@ def score_ticker(
         # two observations, and collapsing them into one number would assert
         # a link this has not measured.
         "volume_ratio": snapshot.get("volume_ratio"),
+        # The same reading as a rank within this ticker's own history,
+        # which is the comparable form -- see technicals.py.
+        "volume_pctile": snapshot.get("volume_pctile"),
         # The DATE, not a countdown. A stored countdown is wrong the day
         # after it is written, and these rows outlive the run that made
         # them -- the days-to-earnings figure is derived wherever it is

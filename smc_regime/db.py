@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS technicals (
 
 _TECHNICAL_COLUMNS = [
     "close", "rsi", "macd_hist", "macd_hist_prev",
-    "ma_fast", "ma_slow", "volume_ratio", "price_change_pct",
+    "ma_fast", "ma_slow", "volume_ratio", "volume_pctile", "price_change_pct",
     "return_1w", "return_1m",
 ]
 

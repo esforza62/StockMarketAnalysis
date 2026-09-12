@@ -48,25 +48,53 @@ def score_headline(text: str) -> float:
     return _analyzer.polarity_scores(text)["compound"]
 
 
-# VADER's own convention: +/-0.05 separates sentiment from neutral, and
-# +/-0.5 is where it calls a score strong. Splitting at both gives five
-# bands off one number, with no extra model and no extra API call.
+# CALIBRATED AGAINST THIS FEED, NOT VADER'S GENERIC THRESHOLDS.
 #
-# These describe LANGUAGE, not materiality. "very negative" means the
-# headline reached for strong negative words -- it cannot tell a writedown
-# from a reporter choosing "plunges", and it has no idea how big the number
-# was. That is precisely why news is reported here and never scored.
+# The first live run showed why that is necessary. VADER's own convention --
+# +/-0.05 separating sentiment from neutral, +/-0.50 marking it strong --
+# put 95% of the universe in "positive" or "very positive": 309 and 78
+# tickers against 11 negative, 10 neutral and ZERO very negative, the last
+# being a band that could not fire at all because the minimum score observed
+# was -0.494. A label that reads the same nineteen times in twenty carries
+# no information.
+#
+# The cause is not the finance lexicon below -- checked directly, plain and
+# tuned VADER score identical on neutral corporate headlines, and the lexicon
+# is the more NEGATIVE-weighted of the two (26 negative terms to 15). It is
+# VADER's base lexicon reading ordinary newswire language as positive
+# ("names new CFO" scores +0.477, "declares quarterly dividend" +0.296) on a
+# feed that is mostly exactly that. The corpus genuinely sits at a median of
+# +0.344, mean +0.358, spread -0.494 to +0.917 over 408 tickers.
+#
+# So the thresholds are percentiles of that observed spread, rounded, giving
+# roughly 5 / 10 / 68 / 12 / 5 percent. Most tickers are unremarkable, which
+# is the honest reading of a newswire, and each tail is small enough to be
+# worth looking at.
+#
+# THE LABELS SAY "WEAKER" AND "STRONGER", NOT "NEGATIVE" AND "POSITIVE",
+# because on this feed those would be false: a ticker at +0.15 is using mildly
+# positive language and is merely below a very positive median. Calling it
+# negative would invent a claim the score does not make. The bottom band is
+# the exception that proves the calibration honest -- its highest member
+# scores +0.045, so "much weaker" really is at or below neutral in absolute
+# terms as well as relative ones.
+#
+# Re-check these if the feed, the window or the article limit changes; they
+# describe THIS corpus, the same caveat the grade cuts carry.
 _BANDS = [
-    (0.50, "very positive"),
-    (0.05, "positive"),
-    (-0.05, "neutral"),
-    (-0.50, "negative"),
+    (0.72, "much stronger"),
+    (0.52, "stronger"),
+    (0.18, "typical"),
+    (0.05, "weaker"),
 ]
-_FLOOR_LABEL = "very negative"
+_FLOOR_LABEL = "much weaker"
 
 
 def _label(compound: float) -> str:
-    """One of the five bands above, from a VADER compound score in [-1, 1]."""
+    """One of the five bands above, from a VADER compound score in [-1, 1].
+
+    Relative to this feed's own spread -- see the calibration note above.
+    """
     for threshold, label in _BANDS:
         if compound >= threshold:
             return label

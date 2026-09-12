@@ -449,6 +449,19 @@ def _valuation_points(trailing_pe: float | None, forward_pe: float | None) -> tu
     return level_pts + dir_pts, f"{level_detail}; {dir_detail}"
 
 
+def _news_label(compound) -> str | None:
+    """Band a stored compound score through news.py's current calibration.
+
+    Imported lazily: news.py pulls in vaderSentiment at module scope, which
+    nothing on the scoring path needs -- only the banding function is wanted
+    here.
+    """
+    if compound is None or pd.isna(compound):
+        return "no data"
+    from .news import _label
+    return _label(float(compound))
+
+
 def _or_none(value):
     """pandas NA -> None, so a missing DB cell serialises as JSON null
     rather than a NaN that json.dumps writes out as bare `NaN`."""
@@ -795,7 +808,13 @@ def compute_universe_setup_scores(
                 # lands straight in the dashboard JSON and json.dumps has no
                 # encoder for numpy.float64.
                 "avg_compound": None if pd.isna(n_row["avg_compound"]) else float(n_row["avg_compound"]),
-                "label": n_row["label"],
+                # DERIVED from the score, not read from the stored text. The
+                # bands are calibrated to the feed's own spread (news.py) and
+                # a recalibration has to reach the dashboard on the next
+                # export, not wait for a nightly to rewrite 415 rows of label
+                # -- otherwise the page shows one banding and the module
+                # defines another. The stored column stays for DB consumers.
+                "label": _news_label(n_row["avg_compound"]),
                 "window_days": int(n_row["window_days"]),
                 "fetched_at": n_row["fetched_at"],
             }

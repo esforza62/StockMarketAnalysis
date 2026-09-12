@@ -30,7 +30,7 @@ BASE = dict(
     valuation=(20.0, 16.0),
 )
 
-NEWS = {"article_count": 7, "avg_compound": -0.61, "label": "very negative", "window_days": 7, "fetched_at": "2026-09-10T21:00:00+00:00"}
+NEWS = {"article_count": 7, "avg_compound": -0.25, "label": "much weaker", "window_days": 7, "fetched_at": "2026-09-10T21:00:00+00:00"}
 
 failures = []
 

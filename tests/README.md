@@ -28,4 +28,12 @@ indicator on a series and again on that series truncated, and requires the
 overlapping bars to match exactly, alongside checks that the volatility deadband
 and volume cap (the two things that make it more than OBV) actually bind.
 
+`test_matched_control.py` guards the thing that decides whether a backtest
+number means anything: the control subtracted from it. Its checks are about
+alignment, not strategies -- on a series compounding at a fixed rate every
+equal-length window returns the same thing, so the control must equal each
+trade's return exactly and edge must be exactly zero however the entries were
+placed. An off-by-one-bar control would still produce plausible-looking edge
+figures, all wrong in the same direction.
+
 Bars are synthetic throughout -- these run without a Tiingo key.

@@ -4,6 +4,21 @@ Each function takes OHLCV and returns a DataFrame with boolean "entry" and
 "exit" columns, aligned to the input index, for a single-position long-only
 strategy. Used by backtest.py to build trade logs, and by regime_backtest.py
 to tag those trades with the SMC regime active on entry.
+
+A note on reading the regime-conditioned results, prompted by the three
+vfi_* strategies below: a high average return per trade is not by itself
+evidence a signal works. A strategy that holds for 85 days in a bull
+market earns most of that number by being long, and summarize_by_regime()
+has no control to subtract it against.
+
+The control used in the findings quoted below is matched per trade: for a
+trade on ticker T held H bars, entered in regime R, compare its return
+against the mean H-bar forward return from every other bar of T that was
+also in regime R. That is what a coin-flip entry inside the same regime,
+on the same name, over the same horizon would have earned; the difference
+is the "edge" figure. It is a screen rather than a p-value -- overlapping
+trades break the independence the t-statistic assumes, and everything is
+gross of costs, which flatters the high-turnover strategies most.
 """
 from __future__ import annotations
 
@@ -372,6 +387,21 @@ def vfi_zero_cross(df: pd.DataFrame, period: int = 130, coef: float = 0.2, vcoef
     trades are regime-tagged downstream, and gating entries on trend
     structure here would hide which regime the raw signal actually works
     in.
+
+    Measured result (411 tickers, daily bars 2019-09 to 2026-09): the raw
+    numbers look strong and the edge is not there. +5.14% per trade in
+    trending/up ranks 4th of 19 strategies -- but the matched control for
+    those same trades returns +5.92%, so the signal gave back 0.77 points
+    against simply being long in the same regime. In trending/down it is
+    worse and not ambiguous: +3.07% per trade against a +5.30% control,
+    an edge of -2.23 points on 1,633 trades (t = -5.5). Choppy is +0.57
+    (t = 0.4), i.e. nothing. Max drawdown reaches -98.8% in trending/up.
+
+    Read that as a statement about what the zero line is, not a tuning
+    problem: it is a slow descriptor of which regime a ticker is already
+    in, and by the time it flips, the move it describes has happened. The
+    parabolic/up row (+34% per trade) is 38 trades at a 21% win rate --
+    a handful of survivors, not a result.
     """
     v = ind.volume_flow_indicator(df, period=period, coef=coef, vcoef=vcoef)["vfi"]
     entry = (v > 0) & (v.shift(1) <= 0)
@@ -386,6 +416,16 @@ def vfi_signal_cross(df: pd.DataFrame, period: int = 130, smooth: int = 3, signa
     rate of flow rather than waiting for the sign of cumulative flow to
     flip, so it trades far more often and gives up the "is this
     accumulation or distribution" certainty that the zero line provides.
+
+    Measured result (same run): it trades enormously and adds nothing.
+    43,000 trades across the regime buckets at a ~42% win rate and
+    +0.55% to +0.62% per trade, against matched controls of +0.62% to
+    +0.76% -- an edge of -0.04 in trending/up, -0.21 in trending/down
+    (t = -2.8), -0.04 in choppy. Every one of those is before costs; at
+    ~5 bars per trade and this many round trips, costs decide the sign.
+    The EMA of a 130-bar sum turns over far faster than the quantity it
+    smooths actually changes, which is the mechanical reason there is
+    nothing here to find.
     """
     v = ind.volume_flow_indicator(df, period=period, smooth=smooth, signal=signal)
     line, sig = v["vfi"], v["signal"]
@@ -414,6 +454,15 @@ def vfi_bullish_divergence(df: pd.DataFrame, period: int = 130, lookback: int = 
     divergence that is already resolving rather than one still falling.
     Exit on the signal-line cross down -- the divergence thesis is spent
     once flow rolls over again.
+
+    Measured result (same run): the only one of the three never
+    significantly negative, and still not a confirmed edge. +0.47 points
+    over its matched control in trending/up (t = 1.4, the sign the
+    exhaustion argument predicts), +0.05 in trending/down, -0.03 in
+    choppy. Win rate is the highest of the three VFI strategies (46-48%)
+    on short 7-8 bar holds. Worth keeping as the one VFI reading that
+    behaves the way its rationale says it should; not worth trading on
+    this evidence.
     """
     v = ind.volume_flow_indicator(df, period=period)
     line, sig = v["vfi"], v["signal"]

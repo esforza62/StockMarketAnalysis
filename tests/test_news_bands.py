@@ -74,6 +74,42 @@ check(
     _news_label(None) == "no data" and _news_label(float("nan")) == "no data",
 )
 
+# Only the ROUNDED score is stored, so the label written beside it must be a
+# function of that rounded value. Labelling the full-precision mean instead
+# let the stored label disagree with what the stored number re-derives to,
+# for any ticker whose mean rounds across a threshold -- LEN, FLEX and LVS
+# on run #29. Driven through the real ticker_sentiment() with the fetch and
+# the scorer stubbed, so it covers the code path that actually writes the row.
+import smc_regime.news as news_mod
+
+_CUT = _BANDS[1][0]                       # 0.52, the "stronger" cut
+_FAKE = [0.519, 0.519, 0.521]             # mean 0.51966... -> rounds to 0.52
+_real_fetch, _real_score = news_mod.fetch_news, news_mod.score_headline
+try:
+    news_mod.fetch_news = lambda ticker, days=7, limit=20: [
+        {"title": f"h{i}"} for i in range(len(_FAKE))
+    ]
+    _seq = iter(_FAKE)
+    news_mod.score_headline = lambda text: next(_seq)
+    result = news_mod.ticker_sentiment("TEST")
+finally:
+    news_mod.fetch_news, news_mod.score_headline = _real_fetch, _real_score
+
+check(
+    "7. the mean is stored rounded and lands on the threshold",
+    result["avg_compound"] == _CUT and sum(_FAKE) / len(_FAKE) < _CUT,
+)
+
+check(
+    "8. the stored label matches what the stored score re-derives to",
+    result["label"] == _label(result["avg_compound"]) == _BANDS[1][1],
+)
+
+check(
+    "9. per-article labels follow the same rule as the average",
+    all(a["label"] == _label(a["compound"]) for a in result["articles"]),
+)
+
 print()
 if failures:
     print(f"{len(failures)} check(s) FAILED")

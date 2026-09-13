@@ -148,16 +148,27 @@ def ticker_sentiment(ticker: str, days: int = 7, limit: int = 20) -> dict:
                 "source": a.get("source", ""),
                 "published_date": a.get("publishedDate", ""),
                 "compound": round(compound, 3),
-                "label": _label(compound),
+                # Same rule as the average below: label what is kept.
+                "label": _label(round(compound, 3)),
             }
         )
 
     compounds = pd.Series([a["compound"] for a in articles])
     counts = pd.Series([a["label"] for a in articles]).value_counts().to_dict()
-    avg_compound = float(compounds.mean())
+    # BAND THE ROUNDED NUMBER, not the full-precision one. Only the rounded
+    # value is stored, and every other consumer -- the dashboard chip, any
+    # later re-banding of the history -- can therefore only ever see that.
+    # Labelling the unrounded mean instead made the stored label disagree
+    # with what the stored number re-derives to, for any ticker whose mean
+    # rounds across a threshold: on run #29 that was LEN, FLEX and LVS, all
+    # sitting exactly on a band edge. Three rows out of 405 is small, but it
+    # is the same failure the derived label was meant to rule out -- the
+    # page saying one thing and the record another -- arriving by a
+    # different route.
+    avg_compound = round(float(compounds.mean()), 3)
     return {
         "article_count": len(articles),
-        "avg_compound": round(avg_compound, 3),
+        "avg_compound": avg_compound,
         "label": _label(avg_compound),
         "counts": counts,
         "articles": articles,

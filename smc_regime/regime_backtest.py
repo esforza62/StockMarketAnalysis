@@ -111,6 +111,11 @@ def collect_trades(
                         "exit_date": trade.exit_date,
                         "return_pct": trade.return_pct,
                         "win": trade.return_pct > 0,
+                        # 1.0 unless this run used position sizing. Carried
+                        # so the equity-curve figures (compounding and
+                        # drawdown) can weight by it while the reported
+                        # per-trade return stays the asset's own move.
+                        "size": trade.size,
                     }
                 )
 
@@ -125,6 +130,22 @@ def collect_trades(
     return trades, pd.DataFrame.from_records(latest_records)
 
 
+def _equity_returns(trades: pd.DataFrame) -> pd.Series:
+    """One ticker's trades as EQUITY contributions, ordered by entry date.
+
+    return_pct is what the asset did; multiplying by `size` gives what the
+    account did. Runs predating position sizing have no size column, and a
+    missing or null size means a full position -- so this reduces exactly
+    to the unweighted series it replaces, and the historical figures it
+    feeds are unchanged.
+    """
+    ordered = trades.sort_values("entry_date")
+    returns = ordered["return_pct"]
+    if "size" not in ordered:
+        return returns
+    return returns * ordered["size"].fillna(1.0)
+
+
 def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:
     """Sequential compounding of one ticker's own trades, ordered by entry date.
 
@@ -132,7 +153,7 @@ def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:
     at a time -- a single ticker's trades genuinely do happen one after
     another for that ticker's own capital.
     """
-    returns = trades.sort_values("entry_date")["return_pct"]
+    returns = _equity_returns(trades)
     growth = (1 + returns / 100).prod()
     return (growth - 1) * 100
 
@@ -158,7 +179,7 @@ def _ticker_max_drawdown_pct(trades: pd.DataFrame) -> float:
     same ordering/compounding basis as _ticker_compounded_return_pct, so a
     string of wins followed by one catastrophic loss shows up here even
     when the AVERAGE return still looks good."""
-    returns = trades.sort_values("entry_date")["return_pct"]
+    returns = _equity_returns(trades)
     equity = (1 + returns / 100).cumprod()
     peak = equity.cummax()
     drawdown = (equity / peak - 1) * 100

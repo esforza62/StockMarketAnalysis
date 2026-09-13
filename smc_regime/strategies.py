@@ -300,6 +300,26 @@ def rsi_dip_recovery_trend_filter(
     a real, validated risk/edge trade-off, not a free lunch (stacking a
     stop or a max-hold-time cap on top pushes drawdown lower still, but
     at that point gives back nearly all the remaining edge too).
+
+    SUPERSEDED as the preferred drawdown fix, though still useful. The
+    premise above -- that the drawdown has to be attacked at the entry --
+    turned out to be wrong. Bucketing rsi_dip_recovery's trades by
+    trailing vol AT ENTRY shows the loss RATE is flat across vol
+    quintiles and losing trades sit ~420 days in every bucket; only the
+    size of the loss scales, -10.6% on the calmest fifth against -38.1%
+    on the wildest. The strategy is not wrong more often on volatile
+    names, it is wrong by the same amount of time for more money -- which
+    is a stake problem, not a signal problem, and explains why this
+    filter costs so much edge: its wildest quintile is also its most
+    profitable, and the entries furthest BELOW the 200MA (the ones this
+    gate removes) are the single best bucket at +23.4%/trade.
+
+    backtest.vol_target_sizes() addresses it as a stake instead, and
+    beats this filter on every axis measured the same way (worst -71.9%
+    vs -86.3%, tickers drawing down past -50% 1.5% vs 3.2%, median
+    per-ticker total 70.8 vs 45.0) while keeping the whole universe and
+    the whole trade set. Keep this variant for the case where a smaller
+    trade count is itself wanted; reach for sizing first.
     """
     r = ind.rsi(df["Close"], rsi_window)
     close = df["Close"]

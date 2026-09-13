@@ -206,8 +206,15 @@ def _macro_payload(conn) -> dict:
     ).fetchall()
     by_symbol = {r[0]: r for r in rows}
     # Config order, not insertion order: the page reads slowest-moving first.
+    # The equity benchmarks are appended last and only ONE of each cash/
+    # future pair is ever stored, so both candidates are listed and whichever
+    # the last fetch chose is the one that appears. Iterating LEVELS alone
+    # silently dropped them when the pairs moved out of that list.
+    order = [row[0] for row in macro_module.LEVELS]
+    for (cash_symbol, _cl), (fut_symbol, _fl) in macro_module.INDEX_PAIRS:
+        order += [cash_symbol, fut_symbol]
     levels = []
-    for symbol, _label, _unit in macro_module.LEVELS:
+    for symbol in order:
         row = by_symbol.get(symbol)
         if row is None:
             continue

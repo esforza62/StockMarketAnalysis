@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS trades (
     entry_date INTEGER NOT NULL,
     exit_date INTEGER NOT NULL,
     return_pct REAL NOT NULL,
-    win INTEGER NOT NULL
+    win INTEGER NOT NULL,
+    size REAL
 );
 
 CREATE INDEX IF NOT EXISTS idx_trades_lookup
@@ -130,6 +131,10 @@ _TECHNICAL_COLUMNS = [
 _ADDED_COLUMNS = {
     "technicals": {c: "REAL" for c in _TECHNICAL_COLUMNS},
     "valuation": {"earnings_date": "TEXT", "earnings_is_estimate": "INTEGER"},
+    # Fraction of a full position the trade was sized at. NULL on rows
+    # written before sizing existed, which every reader treats as 1.0 --
+    # a full position, the behaviour those rows actually had.
+    "trades": {"size": "REAL"},
 }
 
 
@@ -212,8 +217,10 @@ def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: p
     rows["entry_date"] = (pd.to_datetime(rows["entry_date"], utc=True) - _epoch) // pd.Timedelta(seconds=1)
     rows["exit_date"] = (pd.to_datetime(rows["exit_date"], utc=True) - _epoch) // pd.Timedelta(seconds=1)
     rows["win"] = rows["win"].astype(int)
+    if "size" not in rows:
+        rows["size"] = 1.0
 
-    cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win"]
+    cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win", "size"]
     conn.executemany(
         f"INSERT INTO trades ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         rows[cols].itertuples(index=False, name=None),

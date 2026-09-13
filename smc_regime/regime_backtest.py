@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pandas as pd
 
-from .backtest import backtest_strategy
+from .backtest import backtest_strategy, vol_target_sizes
 from .data import fetch_ohlcv
 from .regime import RegimeThresholds, classify_regime, confirmed_regime, regime_streak_bars
 from .split_guard import UNADJUSTED_INTERVALS, filter_contaminated_trades, load_split_cache
@@ -26,6 +26,13 @@ from .technicals import technical_snapshot
 # concurrently instead of waiting on each one sequentially is what actually
 # fixes the wall-clock scaling problem as the tracking universe grows.
 _FETCH_WORKERS = 16
+
+# Annualised volatility the sized column targets. 20% is where the
+# risk/edge trade-off measured on rsi_dip_recovery landed: worst per-ticker
+# drawdown -99.2% -> -71.9% and tickers drawing past -50% 14.2% -> 1.5%,
+# while keeping 71% of the median per-ticker total return. Lower targets
+# keep cutting drawdown but start costing more edge than they save.
+DEFAULT_TARGET_VOL_PCT = 20.0
 
 
 def _fetch_all(tickers: list[str], period: str, interval: str, start_date: str | None) -> dict[str, pd.DataFrame]:
@@ -51,6 +58,7 @@ def collect_trades(
     t: RegimeThresholds = RegimeThresholds(),
     start_date: str | None = None,
     confirm_bars: int = 3,
+    target_vol_pct: float | None = DEFAULT_TARGET_VOL_PCT,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Backtest every strategy on every ticker and tag each trade with the
     regime/direction active on its entry date.
@@ -62,6 +70,14 @@ def collect_trades(
     have held for that many consecutive bars before a trade's entry is
     attributed to it. Set confirm_bars=1 to disable and get the raw
     per-bar behavior this used before.
+
+    target_vol_pct records a volatility-targeted position size on every
+    trade WITHOUT changing which trades are taken -- the engine never
+    consults it for entry or exit (see backtest.run_backtest). The point is
+    to carry both readings on one trade set: return_pct is the unsized
+    result every existing figure means, and return_pct * size is the same
+    trades run at a risk-equalised stake. Set it to None to record full
+    size everywhere.
 
     Returns (trades, latest_regime): `latest_regime` is one row per ticker
     with its confirmed regime/direction/streak_bars as of the LAST bar in
@@ -97,8 +113,11 @@ def collect_trades(
             }
         )
 
+        # One size series per ticker, reused across all 19 strategies --
+        # it depends only on the price history, not on the signal.
+        sizes = vol_target_sizes(df, target_vol_pct) if target_vol_pct else None
         for strategy in STRATEGIES:
-            for trade in backtest_strategy(df, strategy):
+            for trade in backtest_strategy(df, strategy, size_series=sizes):
                 if trade.entry_date not in regime.index:
                     continue
                 records.append(
@@ -130,7 +149,7 @@ def collect_trades(
     return trades, pd.DataFrame.from_records(latest_records)
 
 
-def _equity_returns(trades: pd.DataFrame) -> pd.Series:
+def _equity_returns(trades: pd.DataFrame, sized: bool = True) -> pd.Series:
     """One ticker's trades as EQUITY contributions, ordered by entry date.
 
     return_pct is what the asset did; multiplying by `size` gives what the
@@ -138,27 +157,32 @@ def _equity_returns(trades: pd.DataFrame) -> pd.Series:
     missing or null size means a full position -- so this reduces exactly
     to the unweighted series it replaces, and the historical figures it
     feeds are unchanged.
+
+    sized=False ignores the column outright, which is how the unsized and
+    sized columns are produced from ONE trade set: the trades are the same
+    rows either way, so the pair is a like-for-like comparison rather than
+    two backtests that might differ for other reasons.
     """
     ordered = trades.sort_values("entry_date")
     returns = ordered["return_pct"]
-    if "size" not in ordered:
+    if not sized or "size" not in ordered:
         return returns
     return returns * ordered["size"].fillna(1.0)
 
 
-def _ticker_compounded_return_pct(trades: pd.DataFrame) -> float:
+def _ticker_compounded_return_pct(trades: pd.DataFrame, sized: bool = True) -> float:
     """Sequential compounding of one ticker's own trades, ordered by entry date.
 
     Valid here because this backtest only ever holds one position per ticker
     at a time -- a single ticker's trades genuinely do happen one after
     another for that ticker's own capital.
     """
-    returns = _equity_returns(trades)
+    returns = _equity_returns(trades, sized)
     growth = (1 + returns / 100).prod()
     return (growth - 1) * 100
 
 
-def _compounded_return_pct(group: pd.DataFrame) -> float:
+def _compounded_return_pct(group: pd.DataFrame, sized: bool = True) -> float:
     """Equal-weighted average of each ticker's own compounded return.
 
     Compounding trades from DIFFERENT tickers together as if they were one
@@ -170,30 +194,30 @@ def _compounded_return_pct(group: pd.DataFrame) -> float:
     ticker trading this strategy in this regime -- still a simplification,
     but not a nonsensical one.
     """
-    per_ticker = group.groupby("ticker").apply(_ticker_compounded_return_pct)
+    per_ticker = group.groupby("ticker").apply(_ticker_compounded_return_pct, sized=sized)
     return per_ticker.mean()
 
 
-def _ticker_max_drawdown_pct(trades: pd.DataFrame) -> float:
+def _ticker_max_drawdown_pct(trades: pd.DataFrame, sized: bool = True) -> float:
     """Peak-to-trough drawdown on one ticker's own sequential equity curve --
     same ordering/compounding basis as _ticker_compounded_return_pct, so a
     string of wins followed by one catastrophic loss shows up here even
     when the AVERAGE return still looks good."""
-    returns = _equity_returns(trades)
+    returns = _equity_returns(trades, sized)
     equity = (1 + returns / 100).cumprod()
     peak = equity.cummax()
     drawdown = (equity / peak - 1) * 100
     return drawdown.min()
 
 
-def _max_drawdown_pct(group: pd.DataFrame) -> float:
+def _max_drawdown_pct(group: pd.DataFrame, sized: bool = True) -> float:
     """Worst per-ticker max drawdown across every ticker that traded this
     strategy in this regime bucket -- deliberately the WORST case, not an
     average across tickers, since averaging a tail-risk figure hides
     exactly the risk it exists to surface (a strategy where most tickers
     drew down 10% but one drew down 90% is not well-described by "50%
     average drawdown")."""
-    per_ticker = group.groupby("ticker").apply(_ticker_max_drawdown_pct)
+    per_ticker = group.groupby("ticker").apply(_ticker_max_drawdown_pct, sized=sized)
     return per_ticker.min()
 
 
@@ -218,11 +242,18 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
                 "avg_return_pct": returns.mean(),
                 "avg_hold_days": hold_days.mean(),
                 "total_return_pct": returns.sum(),
-                "compounded_return_pct": _compounded_return_pct(group),
+                "compounded_return_pct": _compounded_return_pct(group, sized=False),
                 "worst_trade_pct": returns.min(),
                 "loss_rate_pct": (returns < 0).mean() * 100,
                 "avg_loss_pct": losers.mean() if not losers.empty else 0.0,
-                "max_drawdown_pct": _max_drawdown_pct(group),
+                "max_drawdown_pct": _max_drawdown_pct(group, sized=False),
+                # The same trades at a volatility-targeted stake. Only the
+                # equity-curve figures get a sized twin: win rate, average
+                # return and worst trade are properties of the trades
+                # themselves and a weight cannot move them, which is the
+                # whole reason sizing is comparable in the first place.
+                "compounded_return_sized_pct": _compounded_return_pct(group, sized=True),
+                "max_drawdown_sized_pct": _max_drawdown_pct(group, sized=True),
             }
         )
 

@@ -51,7 +51,7 @@ def _interval_payload(conn, interval: str) -> dict:
 
     trades = pd.read_sql_query(
         """SELECT t.ticker, s.name AS strategy, t.regime, t.direction,
-                  t.entry_date, t.exit_date, t.return_pct
+                  t.entry_date, t.exit_date, t.return_pct, t.size
            FROM trades t
            JOIN runs r ON r.id = t.run_id
            JOIN strategies s ON s.id = t.strategy_id
@@ -92,6 +92,12 @@ def _interval_payload(conn, interval: str) -> dict:
             "loss_rate_pct": round(row.loss_rate_pct, 1),
             "avg_loss_pct": round(row.avg_loss_pct, 1),
             "max_drawdown_pct": round(row.max_drawdown_pct, 1),
+            # The same trades at a volatility-targeted stake, shown beside
+            # the unsized figures rather than replacing them: the two are
+            # not interchangeable, and a reader comparing this run against
+            # any earlier one needs the unsized column to compare against.
+            "compounded_return_sized_pct": round(row.compounded_return_sized_pct, 1),
+            "max_drawdown_sized_pct": round(row.max_drawdown_sized_pct, 1),
             "thin": row.trade_count < MIN_TRADES,
         }
         buckets.setdefault(f"{row.regime}|{row.direction}", []).append(entry)

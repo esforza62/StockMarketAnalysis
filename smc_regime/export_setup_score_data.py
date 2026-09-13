@@ -167,11 +167,23 @@ def _streak_fields(streak: dict | None) -> dict:
     """Grade-streak fields for one row, all None when the ticker has no
     history yet -- a first run, or a ticker added since capture began."""
     if not streak:
-        return {"grade_since": None, "grade_observations": None, "grade_censored": None}
+        return {
+            "grade_since": None, "grade_observations": None, "grade_censored": None,
+            "grade_strict": None, "grade_total": None, "grade_captures": None, "grade_flips": None,
+        }
     return {
         "grade_since": streak["since"],
         "grade_observations": streak["observations"],
         "grade_censored": streak["censored"],
+        # What the tolerance bought: the unbroken run, the ratio behind the
+        # streak, and every disagreement it absorbed. Carried so the page can
+        # show a patched streak as patched -- a number that quietly swallowed
+        # three reversals would be the false confidence the strict count was
+        # free of.
+        "grade_strict": streak["strict_observations"],
+        "grade_total": streak["total_at_grade"],
+        "grade_captures": streak["captures"],
+        "grade_flips": streak["flips"],
     }
 
 

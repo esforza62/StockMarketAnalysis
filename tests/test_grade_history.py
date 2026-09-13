@@ -209,6 +209,57 @@ check(
     gh.grade_streaks(tmp / "does-not-exist.jsonl") == {},
 )
 
+# ---- blip tolerance ----------------------------------------------------
+# Scores bunch near the grade cuts, so a name a fraction from a boundary
+# flips on noise. A strict streak therefore reports "days since the last
+# wobble" rather than how settled the grade is.
+
+blip = tmp / "blip.jsonl"
+blip.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "EEE", "C", 10.0), row("2026-09-02", "EEE", "C", 11.0),
+    row("2026-09-03", "EEE", "B", 12.0),          # one-capture wobble
+    row("2026-09-04", "EEE", "C", 13.0), row("2026-09-05", "EEE", "C", 14.0),
+]))
+b = gh.grade_streaks(blip)["EEE"]
+check(
+    "19. an isolated one-capture flip does not reset the streak",
+    b["observations"] == 4 and b["since"] == "2026-09-01",
+)
+
+check(
+    "20. the flip is recorded rather than silently absorbed",
+    [f["at"] for f in b["flips"]] == ["2026-09-03"] and b["flips"][0]["grade"] == "B",
+)
+
+check(
+    "21. the strict unbroken run is still reported alongside",
+    b["strict_observations"] == 2 and b["total_at_grade"] == 4 and b["captures"] == 5,
+)
+
+# Two in a row is a real change, not noise.
+real = tmp / "real.jsonl"
+real.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "FFF", "C", 10.0), row("2026-09-02", "FFF", "B", 11.0),
+    row("2026-09-03", "FFF", "B", 12.0), row("2026-09-04", "FFF", "C", 13.0),
+]))
+f = gh.grade_streaks(real)["FFF"]
+check(
+    "22. two consecutive disagreements DO break the streak",
+    f["observations"] == 1 and f["since"] == "2026-09-04" and f["flips"] == [],
+)
+
+# A disagreement at the very start has nothing before it to confirm the
+# grade continued through, so it must not be absorbed.
+edge = tmp / "edge.jsonl"
+edge.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "GGG", "B", 10.0), row("2026-09-02", "GGG", "C", 11.0),
+]))
+g = gh.grade_streaks(edge)["GGG"]
+check(
+    "23. a flip at the edge of history is not absorbed",
+    g["observations"] == 1 and g["flips"] == [] and g["censored"] is False,
+)
+
 if failures:
     print(f"\n{len(failures)} streak check(s) FAILED")
     raise SystemExit(1)

@@ -196,9 +196,10 @@ def load(path: Path = DEFAULT_PATH, interval: str | None = None) -> pd.DataFrame
 def grade_streaks(path: Path = DEFAULT_PATH, interval: str = "1d") -> dict[str, dict]:
     """How long each ticker has held its current grade, per ticker.
 
-    Returns {ticker: {grade, since, observations, censored}} where `since`
-    is the earliest captured date at the current grade and `observations`
-    counts the captures backing it.
+    Returns {ticker: {grade, since, observations, strict_observations,
+    total_at_grade, captures, flips, censored}}. `since` is the earliest
+    captured date the current grade runs back to, tolerating isolated
+    single-capture disagreements; `flips` lists any it crossed.
 
     TWO THINGS MAKE THE NAIVE COUNT WRONG, and both of them read as
     confidence rather than as error.
@@ -247,19 +248,58 @@ def grade_streaks(path: Path = DEFAULT_PATH, interval: str = "1d") -> dict[str, 
             continue
 
         current = captures[-1][1]
-        observations, since = 0, captures[-1][0]
-        for as_of, grade in reversed(captures):
-            if grade != current:
+        # Walk back tolerating ISOLATED disagreements. A strict streak
+        # answers the wrong question here: scores bunch within a point of
+        # the grade cuts (hence the borderline tags on the dashboard), so a
+        # name sitting a fraction from a boundary flips on noise and resets
+        # to zero. On the first history deep enough to check, every one of
+        # 415 tickers had its current grade interrupted at least once, which
+        # made the strict number read as "days since the last wobble"
+        # rather than "how settled this grade is".
+        #
+        # Isolated means a single capture with the same grade on BOTH sides.
+        # Two in a row is a real change, and a disagreement at the far end
+        # of the history has nothing before it to confirm continuity, so
+        # neither is absorbed. Every one crossed is counted and returned in
+        # `flips`, because a streak that quietly swallowed three reversals
+        # would be the same false confidence the strict count avoided.
+        flips, since, observations, index = [], captures[-1][0], 0, len(captures) - 1
+        while index >= 0:
+            as_of, grade = captures[index]
+            if grade == current:
+                observations += 1
+                since = as_of
+                index -= 1
+                continue
+            isolated = index > 0 and captures[index - 1][1] == current
+            if not isolated:
                 break
-            observations += 1
-            since = as_of
+            flips.append({"at": as_of, "grade": grade})
+            index -= 1
         out[ticker] = {
             "grade": current,
             "since": since,
             "observations": observations,
-            "censored": observations == len(captures),
+            "flips": list(reversed(flips)),
+            # `strict` is the unbroken run, kept so the page can say what
+            # the tolerance actually bought and a reader can tell a clean
+            # streak from a patched one.
+            "strict_observations": _strict_run(captures, current),
+            "total_at_grade": sum(1 for _, g in captures if g == current),
+            "captures": len(captures),
+            "censored": index < 0,
         }
     return out
+
+
+def _strict_run(captures: list[tuple[str, str]], current: str) -> int:
+    """Consecutive captures at `current`, counting back with no tolerance."""
+    n = 0
+    for _as_of, grade in reversed(captures):
+        if grade != current:
+            break
+        n += 1
+    return n
 
 
 def main() -> None:

@@ -61,6 +61,38 @@ _COMPONENT_FIELDS = [
 
 _BASE_FIELDS = ["ticker", "sector", "grade", "total_points", "close", "regime", "direction"]
 
+# The headline sentiment reading, kept as the NUMBER and the sample size,
+# never the band label. The label is a function of the number under bands
+# calibrated to one night's corpus (see news.py); storing it would freeze a
+# calibration into the history and make a later recalibration unmeasurable
+# against its own past. The count is what separates a real tail member from
+# a ticker with two articles, and is the first thing a drift check needs.
+#
+# Sentiment is never scored, so this is here for one purpose: the nightly
+# rebuilds the database from scratch and `news_sentiment` is overwritten
+# every run, which means nothing retained the spread run to run. Without
+# these two fields a question like "have the bands held since they were
+# calibrated" can only ever be answered on the single night you happen to
+# ask it.
+_NEWS_FIELDS = ["news_compound", "news_articles"]
+
+
+def _news_fields(row) -> dict:
+    """Pull the sentiment reading out of a scored row's `news` dict.
+
+    All None when the frame carries no news at all -- which is the backfill,
+    where historical headlines cannot be reconstructed, the same reason
+    valuation is flagged there rather than invented.
+    """
+    news = row.get("news") if "news" in row else None
+    if not isinstance(news, dict):
+        return dict.fromkeys(_NEWS_FIELDS)
+    compound = news.get("avg_compound")
+    return {
+        "news_compound": None if compound is None or pd.isna(compound) else round(float(compound), 4),
+        "news_articles": None if news.get("article_count") is None else int(news["article_count"]),
+    }
+
 
 def to_records(
     scores: pd.DataFrame,
@@ -90,6 +122,7 @@ def to_records(
         for field in _COMPONENT_FIELDS:
             record[field] = r.get(field)
         record["valuation_available"] = bool(valuation_available)
+        record.update(_news_fields(r))
         records.append(record)
     return records
 
@@ -143,12 +176,18 @@ def normalize(path: Path = DEFAULT_PATH) -> int:
 def load(path: Path = DEFAULT_PATH, interval: str | None = None) -> pd.DataFrame:
     """Read the history back. Empty frame (with the right columns) when the
     file does not exist yet, so callers do not special-case a first run."""
-    columns = ["as_of", "interval", *_BASE_FIELDS, *_COMPONENT_FIELDS, "valuation_available"]
+    columns = ["as_of", "interval", *_BASE_FIELDS, *_COMPONENT_FIELDS, "valuation_available", *_NEWS_FIELDS]
     if not Path(path).exists():
         return pd.DataFrame(columns=columns)
 
     rows = [json.loads(ln) for ln in Path(path).read_text().splitlines() if ln.strip()]
     df = pd.DataFrame(rows)
+    # Rows written before a field existed simply lack the key, so the frame
+    # would come back a column short and a caller reading it would raise on
+    # a name that is present in every other code path. Reindex instead: the
+    # older rows read as NaN, which is the truth about them.
+    if not df.empty:
+        df = df.reindex(columns=[*columns, *(c for c in df.columns if c not in columns)])
     if not df.empty and interval is not None:
         df = df[df["interval"] == interval].reset_index(drop=True)
     return df

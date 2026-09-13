@@ -13,6 +13,7 @@ import argparse
 from collections import Counter
 
 from . import db as db_module
+from . import grade_history
 from . import jsonfmt
 from .setup_score import (
     _ALIGNMENT_MAX,
@@ -89,6 +90,9 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
     if scores.empty:
         return {"run_at": run_at, "interval": interval, "min_trades": min_trades, "ticker_count": 0, "technicals_covered": technicals_covered, "news_covered": news_covered, "grade_counts": {}, "macro": macro_payload, "sectors": [], "tickers": []}
 
+    # Read once for the whole universe rather than per row: this parses the
+    # entire history file, and doing that 415 times would dominate the export.
+    streaks = grade_history.grade_streaks(interval=interval)
     grade_counts = Counter(scores["grade"])
     sectors = sorted(scores["sector"].unique().tolist())
 
@@ -135,6 +139,13 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
                 "volume_pctile": _cell(r["volume_pctile"], 0),
                 "earnings_date": _cell(r["earnings_date"]),
                 "earnings_is_estimate": _cell(r["earnings_is_estimate"]),
+                # How long this ticker has held this grade. The DATE is
+                # carried, not a day count -- a stored count is wrong the
+                # day after it is written, and these rows outlive the run
+                # that made them. `censored` means the streak runs back to
+                # the start of the history, so the page must read it as a
+                # floor rather than a measurement.
+                **_streak_fields(streaks.get(r["ticker"])),
             }
         )
 
@@ -149,6 +160,18 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
         "macro": macro_payload,
         "sectors": sectors,
         "tickers": tickers,
+    }
+
+
+def _streak_fields(streak: dict | None) -> dict:
+    """Grade-streak fields for one row, all None when the ticker has no
+    history yet -- a first run, or a ticker added since capture began."""
+    if not streak:
+        return {"grade_since": None, "grade_observations": None, "grade_censored": None}
+    return {
+        "grade_since": streak["since"],
+        "grade_observations": streak["observations"],
+        "grade_censored": streak["censored"],
     }
 
 

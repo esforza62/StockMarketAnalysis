@@ -133,4 +133,84 @@ assert list(loaded.columns) == expected_cols, f"columns wrong: {list(loaded.colu
 assert pd.isna(loaded.loc[0, "news_compound"]), "an older row should read NaN, not a value"
 print("11. rows predating the fields load with them as NaN  OK")
 
+
+
+# ---- grade_streaks ------------------------------------------------------
+# Two ways the naive count is wrong, and both read as confidence.
+
+st_path = tmp / "streaks.jsonl"
+
+
+def row(as_of, ticker, grade, close, interval="1d"):
+    return {"as_of": as_of, "interval": interval, "ticker": ticker, "grade": grade,
+            "close": close, "sector": "Tech", "total_points": 70.0,
+            "regime": "trending", "direction": "up", "valuation_available": True,
+            **{f: 5 for f in gh._COMPONENT_FIELDS}}
+
+
+# AAA holds a grade across a re-filed session; BBB changes grade partway.
+st_path.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "AAA", "B", 10.0), row("2026-09-01", "BBB", "C", 50.0),
+    row("2026-09-02", "AAA", "A", 11.0), row("2026-09-02", "BBB", "C", 51.0),
+    row("2026-09-03", "AAA", "A", 12.0), row("2026-09-03", "BBB", "D", 52.0),
+    # Saturday re-file: identical closes to 09-03, no new session happened.
+    row("2026-09-05", "AAA", "A", 12.0), row("2026-09-05", "BBB", "D", 52.0),
+]))
+streaks = gh.grade_streaks(st_path)
+
+check = lambda label, ok: print(f"{label}  {'OK' if ok else 'FAILED'}") or (None if ok else failures.append(label))
+failures = []
+
+check(
+    "12. a re-filed session does not add a day to the streak",
+    streaks["AAA"]["observations"] == 2,
+)
+
+check(
+    "13. the streak is dated from when the grade actually changed",
+    streaks["AAA"]["since"] == "2026-09-02" and streaks["AAA"]["grade"] == "A",
+)
+
+check(
+    "14. a streak not reaching the start of history is not censored",
+    streaks["AAA"]["censored"] is False,
+)
+
+# BBB went C, C, D, D(refile) -- current grade D, one real observation.
+check(
+    "15. a grade change resets the streak",
+    streaks["BBB"]["grade"] == "D" and streaks["BBB"]["observations"] == 1,
+)
+
+# A ticker at its grade for every capture is a FLOOR, not a measurement.
+floor_path = tmp / "floor.jsonl"
+floor_path.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "CCC", "A", 10.0), row("2026-09-02", "CCC", "A", 11.0),
+]))
+check(
+    "16. a streak covering the whole history is flagged censored",
+    gh.grade_streaks(floor_path)["CCC"]["censored"] is True,
+)
+
+# A missed run must not break a real streak -- the scheduler skips nights.
+gap_path = tmp / "gap.jsonl"
+gap_path.write_text("".join(json.dumps(r) + "\n" for r in [
+    row("2026-09-01", "DDD", "B", 10.0), row("2026-09-02", "DDD", "A", 11.0),
+    row("2026-09-09", "DDD", "A", 20.0),
+]))
+gap = gh.grade_streaks(gap_path)["DDD"]
+check(
+    "17. a gap in captures does not break the streak",
+    gap["observations"] == 2 and gap["since"] == "2026-09-02",
+)
+
+check(
+    "18. an empty history yields no streaks rather than raising",
+    gh.grade_streaks(tmp / "does-not-exist.jsonl") == {},
+)
+
+if failures:
+    print(f"\n{len(failures)} streak check(s) FAILED")
+    raise SystemExit(1)
+
 print("\nall checks passed")

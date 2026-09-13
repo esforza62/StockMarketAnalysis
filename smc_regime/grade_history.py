@@ -193,6 +193,75 @@ def load(path: Path = DEFAULT_PATH, interval: str | None = None) -> pd.DataFrame
     return df
 
 
+def grade_streaks(path: Path = DEFAULT_PATH, interval: str = "1d") -> dict[str, dict]:
+    """How long each ticker has held its current grade, per ticker.
+
+    Returns {ticker: {grade, since, observations, censored}} where `since`
+    is the earliest captured date at the current grade and `observations`
+    counts the captures backing it.
+
+    TWO THINGS MAKE THE NAIVE COUNT WRONG, and both of them read as
+    confidence rather than as error.
+
+    Re-filed sessions. A capture whose close is identical to the previous
+    one for that ticker is the SAME trading session filed under a new date
+    -- it happens when a snapshot runs on a weekend or a market holiday,
+    and it happened for all 415 tickers when a run was dispatched on a
+    Saturday night carrying Friday's closes. Counting it adds a day nobody
+    lived through, so consecutive identical closes collapse to one
+    observation. Grade is deliberately not part of that test: two genuinely
+    different sessions can easily produce the same grade, and collapsing
+    those would be the opposite error.
+
+    Censoring. The history starts when capture started, so a ticker that
+    has held its grade for every capture on file has a streak of AT LEAST
+    that long and possibly far longer. `censored` says so, and callers are
+    expected to render it as a floor rather than a measurement -- at the
+    time of writing 40 of 415 tickers sit at that boundary, so it is the
+    common case, not an edge one.
+
+    Gaps are NOT treated as breaks. If a grade reads A either side of a
+    missed run, the streak continues through it: the alternative resets a
+    real streak every time the scheduler skips a night, which would be
+    wrong far more often than the continuity assumption is.
+    """
+    frame = load(path, interval=interval)
+    if frame.empty:
+        return {}
+
+    out: dict[str, dict] = {}
+    for ticker, rows in frame.groupby("ticker"):
+        ordered = rows.sort_values("as_of")
+        captures: list[tuple[str, str]] = []   # (as_of, grade), re-files collapsed
+        last_close = None
+        for row in ordered.itertuples(index=False):
+            close = getattr(row, "close", None)
+            if captures and close is not None and last_close is not None and close == last_close:
+                # Same session re-filed: replace rather than append, so the
+                # streak is dated from when the session actually happened.
+                captures[-1] = (captures[-1][0], row.grade)
+                continue
+            captures.append((row.as_of, row.grade))
+            last_close = close
+        if not captures:
+            continue
+
+        current = captures[-1][1]
+        observations, since = 0, captures[-1][0]
+        for as_of, grade in reversed(captures):
+            if grade != current:
+                break
+            observations += 1
+            since = as_of
+        out[ticker] = {
+            "grade": current,
+            "since": since,
+            "observations": observations,
+            "censored": observations == len(captures),
+        }
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Normalize the setup-grade history in place.")
     parser.add_argument("path", nargs="?", default=str(DEFAULT_PATH))

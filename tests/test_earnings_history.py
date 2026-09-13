@@ -12,7 +12,10 @@ import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, "/home/user/StockMarketAnalysis")
+# Run directly (python tests/test_x.py) as well as under pytest -- without
+# this the repo root isn't on sys.path and `from smc_regime import ...`
+# fails unless PYTHONPATH happens to be set.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 

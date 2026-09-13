@@ -9,8 +9,12 @@ quietly started weighting them.
 Plain asserts, no pytest, no network -- see tests/README.md.
 """
 import sys
+from pathlib import Path
 
-sys.path.insert(0, "/home/user/StockMarketAnalysis")
+# Run directly (python tests/test_x.py) as well as under pytest -- without
+# this the repo root isn't on sys.path and `from smc_regime import ...`
+# fails unless PYTHONPATH happens to be set.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from smc_regime.setup_score import score_ticker
 

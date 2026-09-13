@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS trades (
 CREATE INDEX IF NOT EXISTS idx_trades_lookup
     ON trades (run_id, regime, direction, strategy_id, ticker);
 
+CREATE TABLE IF NOT EXISTS macro_levels (
+    symbol TEXT PRIMARY KEY,
+    label TEXT,
+    unit TEXT,
+    price REAL,
+    change_pct REAL,
+    fetched_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS ticker_metadata (
     ticker TEXT PRIMARY KEY,
     exchange TEXT,
@@ -224,6 +233,34 @@ def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: p
     conn.executemany(
         f"INSERT INTO trades ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         rows[cols].itertuples(index=False, name=None),
+    )
+    conn.commit()
+
+
+def upsert_macro_levels(conn: sqlite3.Connection, levels: list[dict], fetched_at: str) -> None:
+    """Replace the macro strip with this run's readings.
+
+    Keyed on symbol with no run_id: unlike trades, there is only ever one
+    current answer to "where is the 10Y", and the history that would
+    justify keeping old rows lives in the price series itself.
+
+    Rows are left alone when `levels` is empty. A failed fetch should
+    leave yesterday's numbers on the page with their own (older) timestamp
+    showing, rather than blanking the strip -- the page always renders the
+    as-of time, so a stale reading announces itself.
+    """
+    if not levels:
+        return
+    conn.executemany(
+        """INSERT INTO macro_levels (symbol, label, unit, price, change_pct, fetched_at)
+           VALUES (:symbol, :label, :unit, :price, :change_pct, :fetched_at)
+           ON CONFLICT(symbol) DO UPDATE SET
+               label = excluded.label,
+               unit = excluded.unit,
+               price = excluded.price,
+               change_pct = excluded.change_pct,
+               fetched_at = excluded.fetched_at""",
+        [{**row, "fetched_at": fetched_at} for row in levels],
     )
     conn.commit()
 

@@ -65,6 +65,7 @@ def main() -> None:
     parser.add_argument("--skip-metadata", action="store_true", help="skip refreshing ticker exchange/sector metadata")
     parser.add_argument("--skip-valuation", action="store_true", help="skip refreshing forward/trailing P/E and next earnings date")
     parser.add_argument("--skip-news", action="store_true", help="skip refreshing headline sentiment (needs TIINGO_API_KEY)")
+    parser.add_argument("--skip-macro", action="store_true", help="skip refreshing the macro levels strip")
     parser.add_argument("--news-days", type=int, default=7, help="how many days of headlines the sentiment read covers")
     parser.add_argument("--start-date", default=None, help="fixed calendar anchor (e.g. 2019-01-01) instead of the default rolling lookback -- use for a full rebuild")
     parser.add_argument(
@@ -101,6 +102,22 @@ def main() -> None:
         results = valuation_module.fetch_valuation_batch(tickers)
         db_module.upsert_valuation(conn, results, datetime.now(timezone.utc).isoformat())
         print(f"valuation: {len(results)}/{len(tickers)} tickers")
+
+    if not args.skip_macro:
+        # Cheap next to everything else here -- eight requests against the
+        # un-gated chart endpoint -- and deliberately last, so a macro
+        # failure cannot cost the run its trades, valuation or news.
+        from . import macro as macro_module
+        levels = macro_module.fetch_levels()
+        db_module.upsert_macro_levels(conn, levels, datetime.now(timezone.utc).isoformat())
+        print(f"macro: {len(levels)}/{len(macro_module.LEVELS)} levels")
+        calendar = macro_module.load_calendar()
+        if macro_module.calendar_expired(calendar):
+            print(
+                f"macro: event calendar expired (covers through {calendar.get('covers_through')}) "
+                "-- refresh smc_regime/data/macro_calendar.json",
+                file=sys.stderr,
+            )
 
     if not args.skip_news:
         # Never fatal: fetch_sentiment_batch swallows per-ticker failures and

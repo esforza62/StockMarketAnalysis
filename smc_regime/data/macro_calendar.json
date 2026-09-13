@@ -1,0 +1,132 @@
+{
+  "source": "TradingView economic calendar, US high-importance events",
+  "fetched_at": "2026-09-13T00:00:00Z",
+  "covers_through": "2026-10-15",
+  "events": [
+    {
+      "at": "2026-09-16T12:30:00Z",
+      "title": "Retail Sales MoM",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-16T18:00:00Z",
+      "title": "Fed Interest Rate Decision",
+      "category": "fed"
+    },
+    {
+      "at": "2026-09-16T18:00:00Z",
+      "title": "FOMC Economic Projections",
+      "category": "fed"
+    },
+    {
+      "at": "2026-09-16T18:30:00Z",
+      "title": "Fed Press Conference",
+      "category": "fed"
+    },
+    {
+      "at": "2026-09-17T12:30:00Z",
+      "title": "Building Permits Prel",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-17T12:30:00Z",
+      "title": "Housing Starts",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-25T12:30:00Z",
+      "title": "Durable Goods Orders MoM",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-29T14:00:00Z",
+      "title": "JOLTs Job Openings",
+      "category": "jobs"
+    },
+    {
+      "at": "2026-09-30T12:30:00Z",
+      "title": "Core PCE Price Index MoM",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-09-30T12:30:00Z",
+      "title": "GDP Growth Rate QoQ Final",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-30T12:30:00Z",
+      "title": "Personal Spending MoM",
+      "category": "other"
+    },
+    {
+      "at": "2026-09-30T12:30:00Z",
+      "title": "Personal Income MoM",
+      "category": "other"
+    },
+    {
+      "at": "2026-10-01T14:00:00Z",
+      "title": "ISM Manufacturing PMI",
+      "category": "other"
+    },
+    {
+      "at": "2026-10-02T12:30:00Z",
+      "title": "Unemployment Rate",
+      "category": "jobs"
+    },
+    {
+      "at": "2026-10-02T12:30:00Z",
+      "title": "Non Farm Payrolls",
+      "category": "jobs"
+    },
+    {
+      "at": "2026-10-05T14:00:00Z",
+      "title": "ISM Services PMI",
+      "category": "other"
+    },
+    {
+      "at": "2026-10-07T18:00:00Z",
+      "title": "FOMC Minutes",
+      "category": "fed"
+    },
+    {
+      "at": "2026-10-09T14:00:00Z",
+      "title": "Michigan Consumer Sentiment Prel",
+      "category": "other"
+    },
+    {
+      "at": "2026-10-13T14:00:00Z",
+      "title": "Existing Home Sales",
+      "category": "other"
+    },
+    {
+      "at": "2026-10-14T12:30:00Z",
+      "title": "Core Inflation Rate MoM",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-10-14T12:30:00Z",
+      "title": "Core Inflation Rate YoY",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-10-14T12:30:00Z",
+      "title": "Inflation Rate YoY",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-10-14T12:30:00Z",
+      "title": "Inflation Rate MoM",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-10-15T12:30:00Z",
+      "title": "PPI MoM",
+      "category": "inflation"
+    },
+    {
+      "at": "2026-10-15T13:30:00Z",
+      "title": "Retail Sales MoM",
+      "category": "other"
+    }
+  ]
+}

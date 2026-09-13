@@ -79,11 +79,15 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
     # headlines. The count is what tells those two apart.
     news = db_module.all_news_sentiment(conn)
     news_covered = int((news["article_count"] > 0).sum()) if not news.empty else 0
+    # Built while the connection is still open -- the payload is assembled
+    # long after conn.close() below, and reading there raised on a closed
+    # database rather than silently returning nothing.
+    macro_payload = _macro_payload(conn)
     conn.close()
 
     scores = compute_universe_setup_scores(db_path=db_path, interval=interval, min_trades=min_trades)
     if scores.empty:
-        return {"run_at": run_at, "interval": interval, "min_trades": min_trades, "ticker_count": 0, "technicals_covered": technicals_covered, "news_covered": news_covered, "grade_counts": {}, "sectors": [], "tickers": []}
+        return {"run_at": run_at, "interval": interval, "min_trades": min_trades, "ticker_count": 0, "technicals_covered": technicals_covered, "news_covered": news_covered, "grade_counts": {}, "macro": macro_payload, "sectors": [], "tickers": []}
 
     grade_counts = Counter(scores["grade"])
     sectors = sorted(scores["sector"].unique().tolist())
@@ -142,8 +146,47 @@ def export(db_path: str, interval: str = "1d", min_trades: int = 15) -> dict:
         "technicals_covered": technicals_covered,
         "news_covered": news_covered,
         "grade_counts": {g: grade_counts.get(g, 0) for g in _GRADE_ORDER},
+        "macro": macro_payload,
         "sectors": sectors,
         "tickers": tickers,
+    }
+
+
+def _macro_payload(conn) -> dict:
+    """Market levels from the last run, plus the committed event schedule.
+
+    The levels carry their OWN fetched_at rather than inheriting the run's:
+    the macro step is last in the nightly and can fail on its own, leaving
+    yesterday's numbers in place, and a strip that claimed this morning's
+    timestamp over last night's prices would be worse than no strip.
+
+    Events are read from the repo at export time rather than the database
+    because that is where they live -- there is no point round-tripping a
+    committed file through SQLite.
+    """
+    from . import macro as macro_module
+
+    rows = conn.execute(
+        "SELECT symbol, label, unit, price, change_pct, fetched_at FROM macro_levels"
+    ).fetchall()
+    by_symbol = {r[0]: r for r in rows}
+    # Config order, not insertion order: the page reads slowest-moving first.
+    levels = []
+    for symbol, _label, _unit in macro_module.LEVELS:
+        row = by_symbol.get(symbol)
+        if row is None:
+            continue
+        levels.append({
+            "symbol": row[0], "label": row[1], "unit": row[2],
+            "price": row[3], "change_pct": row[4], "fetched_at": row[5],
+        })
+    calendar = macro_module.load_calendar()
+    return {
+        "levels": levels,
+        "as_of": max((l["fetched_at"] for l in levels), default=None),
+        "events": macro_module.upcoming(calendar),
+        "covers_through": calendar.get("covers_through"),
+        "expired": macro_module.calendar_expired(calendar),
     }
 
 

@@ -121,6 +121,102 @@ check(
     all(datetime.fromisoformat(e["at"].replace("Z", "+00:00")) for e in real["events"]),
 )
 
+# ---- level parsing -----------------------------------------------------
+# Both of these produce a plausible-looking wrong number rather than an
+# error, which is the only reason they are worth pinning down.
+
+import types
+
+
+def fake_chart(bars, price, tz="America/New_York"):
+    """A chart response with (epoch, close) bars and a live price."""
+    return {
+        "chart": {
+            "error": None,
+            "result": [{
+                "meta": {"regularMarketPrice": price, "exchangeTimezoneName": tz,
+                         "chartPreviousClose": 999.0},
+                "timestamp": [b[0] for b in bars],
+                "indicators": {"quote": [{"close": [b[1] for b in bars]}]},
+            }],
+        }
+    }
+
+
+def with_response(payload):
+    class R:
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return payload
+    return types.SimpleNamespace(get=lambda *a, **k: R())
+
+
+def epoch(y, m, d, hour=20):
+    return int(datetime(y, m, d, hour, tzinfo=timezone.utc).timestamp())
+
+
+real_requests = macro.requests
+
+# Market shut: the latest bar already carries the current price, so the
+# prior close must be the bar BEFORE it. Anchoring on "today" instead
+# returns that same bar and every instrument reads a flat 0.00%.
+try:
+    macro.requests = with_response(fake_chart(
+        [(epoch(2026, 9, 10), 100.0), (epoch(2026, 9, 11), 110.0)], price=110.0))
+    shut = macro.fetch_level("TEST")
+finally:
+    macro.requests = real_requests
+
+check(
+    "13. with the market shut, change is measured against the previous session",
+    shut["change_pct"] is not None and abs(shut["change_pct"] - 10.0) < 1e-9,
+)
+
+# Mid-session: today's partial bar is present and carries the live price.
+# The prior close is yesterday, not the day before.
+today = datetime.now(timezone.utc).date()
+try:
+    macro.requests = with_response(fake_chart([
+        (epoch(2026, 9, 9), 50.0),
+        (int(datetime(today.year, today.month, today.day, 12, tzinfo=timezone.utc).timestamp()) - 86400, 100.0),
+        (int(datetime(today.year, today.month, today.day, 12, tzinfo=timezone.utc).timestamp()), 105.0),
+    ], price=105.0))
+    live = macro.fetch_level("TEST")
+finally:
+    macro.requests = real_requests
+
+check(
+    "14. mid-session, change is measured against yesterday, not two days back",
+    live["change_pct"] is not None and abs(live["change_pct"] - 5.0) < 1e-9,
+)
+
+check(
+    "15. an instrument with a bar dated today reports traded_today",
+    live["traded_today"] is True and shut["traded_today"] is False,
+)
+
+# A single bar has nothing to compare against: None, never a flat zero.
+try:
+    macro.requests = with_response(fake_chart([(epoch(2026, 9, 11), 100.0)], price=100.0))
+    lone = macro.fetch_level("TEST")
+finally:
+    macro.requests = real_requests
+
+check(
+    "16. one bar yields an unknown change rather than a flat zero",
+    lone["change_pct"] is None,
+)
+
+check(
+    "17. the equity benchmarks are configured as cash/future pairs",
+    len(macro.INDEX_PAIRS) == 2
+    and all(len(pair) == 2 and len(pair[0]) == 2 for pair in macro.INDEX_PAIRS),
+)
+
 print()
 if failures:
     print(f"{len(failures)} check(s) FAILED")

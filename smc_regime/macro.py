@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import requests
@@ -50,8 +51,24 @@ LEVELS = [
     ("GC=F", "Gold", "$"),
     ("DX-Y.NYB", "Dollar index", ""),
     ("^VIX", "VIX", ""),
-    ("ES=F", "S&P futures", ""),
-    ("NQ=F", "Nasdaq futures", ""),
+]
+
+# Equity benchmarks, resolved by SESSION rather than fixed.
+#
+# During the cash session the index itself is the market -- SPX at 2pm is
+# the number everything on this page is measured against. Overnight and
+# pre-market the index is frozen at yesterday's close and the future is the
+# only thing moving, so showing the cash index at 3am would print a stale
+# number with no indication it was stale.
+#
+# The switch is DATA-DRIVEN, not clock-driven: the cash index is used when
+# its own latest daily bar is dated today in exchange time, which means it
+# has actually traded. That gets market holidays and half-days right
+# without carrying a holiday calendar, and degrades to the future on any
+# day the cash market did not open.
+INDEX_PAIRS = [
+    (("^GSPC", "S&P 500"), ("ES=F", "S&P futures")),
+    (("^NDX", "Nasdaq 100"), ("NQ=F", "Nasdaq futures")),
 ]
 
 
@@ -74,30 +91,85 @@ def fetch_level(symbol: str) -> dict | None:
         if chart.get("error"):
             return None
         result = chart["result"][0]
-        closes = [c for c in result["indicators"]["quote"][0]["close"] if c is not None]
-        if not closes:
+        meta = result["meta"]
+        quote = result["indicators"]["quote"][0]
+        bars = [
+            (stamp, close)
+            for stamp, close in zip(result.get("timestamp") or [], quote.get("close") or [])
+            if close is not None
+        ]
+        if not bars:
             return None
-        last = result["meta"].get("regularMarketPrice") or closes[-1]
-        prior = closes[-2] if len(closes) > 1 else None
+        last = meta.get("regularMarketPrice") or bars[-1][1]
+
+        # The prior close is the last bar dated BEFORE today in exchange
+        # time -- not simply bars[-2]. Mid-session Yahoo may or may not have
+        # opened today's daily bar yet, and taking the second-to-last either
+        # way silently compares the live price against the day before
+        # yesterday on the runs that happen to land before it appears.
+        # chartPreviousClose is no help: it is the close preceding the whole
+        # requested range, not the previous session.
+        zone = _zone(meta.get("exchangeTimezoneName"))
+        today = datetime.now(zone).date()
+        # Anchor on the LATEST BAR's date, not on today. When the market is
+        # shut the latest bar already carries the current price, so asking
+        # for "the last bar before today" hands back that same bar and every
+        # change reads a flat 0.00% -- which is what the first version of
+        # this did, over a weekend, for all eight instruments at once.
+        latest_date = datetime.fromtimestamp(bars[-1][0], zone).date()
+        earlier = [c for stamp, c in bars if datetime.fromtimestamp(stamp, zone).date() < latest_date]
+        prior = earlier[-1] if earlier else None
+
         return {
             "symbol": symbol,
             "price": float(last),
             # None, not 0.0, when there is no prior close to compare against:
             # a flat reading and an unknown one are different claims.
             "change_pct": None if prior in (None, 0) else (float(last) / prior - 1) * 100,
+            # Whether this instrument has traded today in its own timezone,
+            # which is what decides cash-versus-future below.
+            "traded_today": bool(bars and datetime.fromtimestamp(bars[-1][0], zone).date() >= today),
         }
     except Exception:
         return None
 
 
+def _zone(name: str | None):
+    """Exchange timezone, falling back to UTC when Yahoo omits or misnames it."""
+    try:
+        return ZoneInfo(name) if name else timezone.utc
+    except Exception:
+        return timezone.utc
+
+
 def fetch_levels(symbols=None) -> list[dict]:
-    """Every configured level, in display order, skipping any that failed."""
+    """Every configured level, in display order, skipping any that failed.
+
+    Equity benchmarks resolve per session: the cash index when it has
+    traded today, otherwise the front future. Only one of each pair is
+    returned, so the strip stays the same width either way.
+    """
     wanted = LEVELS if symbols is None else [row for row in LEVELS if row[0] in symbols]
     out = []
     for symbol, label, unit in wanted:
         row = fetch_level(symbol)
         if row is not None:
             out.append({**row, "label": label, "unit": unit})
+
+    if symbols is None:
+        for (cash_symbol, cash_label), (fut_symbol, fut_label) in INDEX_PAIRS:
+            cash = fetch_level(cash_symbol)
+            if cash is not None and cash.get("traded_today"):
+                out.append({**cash, "label": cash_label, "unit": ""})
+                continue
+            future = fetch_level(fut_symbol)
+            if future is not None:
+                # Named as a future so the label itself carries the caveat --
+                # nobody should have to read the timestamp to work out that
+                # a 3am number is not the index.
+                out.append({**future, "label": fut_label, "unit": ""})
+            elif cash is not None:
+                out.append({**cash, "label": cash_label + " (prev close)", "unit": ""})
     return out
 
 

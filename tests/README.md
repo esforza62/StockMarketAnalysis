@@ -20,4 +20,12 @@ the transition logic that turns "next report" into "reported on" -- including
 that a date moving EARLIER is a correction rather than a report, which would
 otherwise invent report dates that never happened.
 
+`test_volume_flow.py` covers the Volume Flow Indicator, where the same kind of
+silent failure lives in the indicator itself rather than the grade chain: a
+trailing volume average that forgot to shift off the current bar still produces
+a smooth, plausible line -- one that has seen the future. It computes the
+indicator on a series and again on that series truncated, and requires the
+overlapping bars to match exactly, alongside checks that the volatility deadband
+and volume cap (the two things that make it more than OBV) actually bind.
+
 Bars are synthetic throughout -- these run without a Tiingo key.

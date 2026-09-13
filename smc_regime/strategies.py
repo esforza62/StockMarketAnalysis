@@ -355,6 +355,81 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def vfi_zero_cross(df: pd.DataFrame, period: int = 130, coef: float = 0.2, vcoef: float = 2.5) -> pd.DataFrame:
+    """Volume Flow Indicator crossing its zero line -- the indicator's
+    headline read: positive VFI means volume-weighted flow over the last
+    `period` bars has been net accumulation, negative means net
+    distribution.
+
+    This is a slow, state-like signal, not a timing one. VFI needs 160
+    bars before it emits anything at all and sums over 130 of them, so a
+    zero cross reflects a shift that has already been building for weeks
+    on daily bars -- expect few trades and long holds. That is the point
+    of testing it: whether a regime-scale flow read adds anything over
+    the faster crossover strategies already here.
+
+    No trend filter, deliberately -- same reasoning as rsi_dip_recovery:
+    trades are regime-tagged downstream, and gating entries on trend
+    structure here would hide which regime the raw signal actually works
+    in.
+    """
+    v = ind.volume_flow_indicator(df, period=period, coef=coef, vcoef=vcoef)["vfi"]
+    entry = (v > 0) & (v.shift(1) <= 0)
+    exit_ = (v < 0) & (v.shift(1) >= 0)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vfi_signal_cross(df: pd.DataFrame, period: int = 130, smooth: int = 3, signal: int = 6) -> pd.DataFrame:
+    """VFI crossing its own EMA signal line -- the faster read of the same
+    series, standing in the same relation to vfi_zero_cross as a MACD
+    signal cross does to a MACD zero cross: it fires on a change in the
+    rate of flow rather than waiting for the sign of cumulative flow to
+    flip, so it trades far more often and gives up the "is this
+    accumulation or distribution" certainty that the zero line provides.
+    """
+    v = ind.volume_flow_indicator(df, period=period, smooth=smooth, signal=signal)
+    line, sig = v["vfi"], v["signal"]
+    entry = (line > sig) & (line.shift(1) <= sig.shift(1))
+    exit_ = (line < sig) & (line.shift(1) >= sig.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def vfi_bullish_divergence(df: pd.DataFrame, period: int = 130, lookback: int = 20) -> pd.DataFrame:
+    """Price making a lower low while VFI makes a higher low -- the use
+    Katsanos actually argues for, on the reading that price printing a new
+    low on weaker outflow than the previous low means the selling is
+    exhausting.
+
+    Divergence here is measured between adjacent `lookback`-bar windows
+    (this window's low vs. the previous window's low), not between
+    swing-pivot lows. A pivot-based version would need a confirmed pivot,
+    which by construction is only known some bars after it happened --
+    fine for reading a chart, but it would either look ahead or fire late
+    in a backtest. The window version is the standard vectorized
+    substitute and is what the entry below can actually trade; it will
+    tag some divergences a chart reader would not draw, and miss pivots
+    that straddle a window boundary.
+
+    Entry additionally requires VFI to have turned up, so the signal is a
+    divergence that is already resolving rather than one still falling.
+    Exit on the signal-line cross down -- the divergence thesis is spent
+    once flow rolls over again.
+    """
+    v = ind.volume_flow_indicator(df, period=period)
+    line, sig = v["vfi"], v["signal"]
+    close = df["Close"]
+
+    price_low = close.rolling(lookback).min()
+    flow_low = line.rolling(lookback).min()
+    price_made_lower_low = price_low < price_low.shift(lookback)
+    flow_made_higher_low = flow_low > flow_low.shift(lookback)
+    turning_up = (line > line.shift(1)) & (line.shift(1) <= line.shift(2))
+
+    entry = price_made_lower_low & flow_made_higher_low & turning_up
+    exit_ = (line < sig) & (line.shift(1) >= sig.shift(1))
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -375,4 +450,7 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "vfi_zero_cross": vfi_zero_cross,
+    "vfi_signal_cross": vfi_signal_cross,
+    "vfi_divergence": vfi_bullish_divergence,
 }

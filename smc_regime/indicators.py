@@ -162,6 +162,84 @@ def vwap(df: pd.DataFrame, window: int = 20) -> pd.Series:
     return pv.rolling(window).sum() / df["Volume"].rolling(window).sum()
 
 
+def volume_flow_indicator(
+    df: pd.DataFrame,
+    period: int = 130,
+    coef: float = 0.2,
+    vcoef: float = 2.5,
+    smooth: int = 3,
+    signal: int = 6,
+    stdev_window: int = 30,
+) -> pd.DataFrame:
+    """Volume Flow Indicator (Markos Katsanos, TASC June 2004).
+
+    On Balance Volume with two corrections, both of which matter more than
+    the cumulative-sum idea they wrap:
+
+    - a *volatility-scaled deadband* (`cutoff`): a bar only contributes
+      flow if its typical-price change clears `coef` standard deviations
+      of recent log returns. OBV counts every bar's full volume no matter
+      how small the move, so on a quiet range it accumulates noise with a
+      sign decided by rounding; here those bars contribute exactly zero.
+    - a *volume cap* (`vmax`): a bar's volume counts for at most `vcoef`
+      times the trailing average, so one earnings gap or index-rebalance
+      print can't permanently re-base the line the way it does in OBV.
+
+    Dividing the rolling sum by that same trailing average volume is the
+    third difference: the output is in "days of average volume" rather
+    than OBV's unit-less running total, so it is comparable across
+    tickers and across time for one ticker, and a fixed zero line
+    actually means something.
+
+    Defaults are Katsanos's daily-chart values. For 5-15 minute bars he
+    uses coef=0.1 and vcoef=3.5 -- intraday moves are smaller relative to
+    their own volatility and intraday volume is spikier.
+
+    Returns `vfi` (the smoothed line), `signal` (its own EMA), and
+    `histogram` (the difference) -- the same three-column shape as
+    macd(), since it is read the same way: zero-line state, signal-line
+    crosses, and divergence against price.
+
+    Needs `period + stdev_window` bars (160 by default) before it emits
+    anything; every column is NaN until then rather than a partial value
+    computed from a short window, since a sum over 40 bars divided by a
+    40-bar average volume is not a smaller version of the same reading,
+    it is a different indicator.
+    """
+    close = df["Close"]
+    typical = (df["High"] + df["Low"] + close) / 3
+
+    # Volatility is measured on LOG returns, then re-scaled by price to
+    # get a cutoff in price units -- so the deadband is a constant
+    # fraction of typical move size regardless of whether the ticker
+    # trades at $3 or $900.
+    inter = np.log(typical) - np.log(typical.shift(1))
+    vinter = inter.rolling(stdev_window).std()
+    cutoff = coef * vinter * close
+
+    # .shift(1): the average is of volume STRICTLY BEFORE this bar. Using
+    # the current bar's own volume in the average it is about to be capped
+    # against (and divided by) would let a spike raise its own ceiling.
+    vave = df["Volume"].rolling(period).mean().shift(1)
+    vmax = vave * vcoef
+    vc = df["Volume"].clip(upper=vmax)
+
+    money_flow = typical - typical.shift(1)
+    vcp = pd.Series(np.nan, index=df.index)
+    valid = cutoff.notna() & money_flow.notna()
+    # Only the sign of the price change picks the sign of the flow --
+    # volume never decides direction, it only scales magnitude. This is
+    # not order flow and says nothing about who was buying.
+    vcp[valid & (money_flow > cutoff)] = vc[valid & (money_flow > cutoff)]
+    vcp[valid & (money_flow < -cutoff)] = -vc[valid & (money_flow < -cutoff)]
+    vcp[valid & (money_flow.abs() <= cutoff)] = 0.0
+
+    raw = vcp.rolling(period).sum() / vave.replace(0, np.nan)
+    vfi = ema(raw, smooth)
+    signal_line = ema(vfi, signal)
+    return pd.DataFrame({"vfi": vfi, "signal": signal_line, "histogram": vfi - signal_line})
+
+
 def rolling_slope(series: pd.Series, window: int) -> pd.Series:
     """OLS slope of series vs. time index, computed per rolling window."""
     x = np.arange(window, dtype=float)

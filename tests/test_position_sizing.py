@@ -133,6 +133,40 @@ check(
     raises(lambda: vol_target_sizes(df, 0)) and raises(lambda: vol_target_sizes(df, -5)),
 )
 
+# Annualising a volatility scales by sqrt(bars per year), so one constant
+# can only ever be right for one bar size. Using the daily 252 on hourly
+# data understates vol 2.55x and drives almost every position to the cap.
+hourly = vol_target_sizes(df, target_vol_pct=20, interval="1h")
+weekly = vol_target_sizes(df, target_vol_pct=20, interval="1w")
+daily = vol_target_sizes(df, target_vol_pct=20, interval="1d")
+
+check(
+    "13. a finer interval annualises to a HIGHER vol, so smaller positions",
+    hourly.dropna().mean() < daily.dropna().mean(),
+)
+
+check(
+    "14. a coarser interval annualises to a LOWER vol, so larger positions",
+    weekly.dropna().mean() > daily.dropna().mean(),
+)
+
+# The ratio is exactly sqrt(bars_per_year) where neither is at the cap.
+free = (daily < 0.999) & (hourly < 0.999)
+if free.any():
+    ratio = (daily[free] / hourly[free]).mean()
+    expected = np.sqrt((252 * 6.5) / 252)
+    check(
+        "15. the size ratio between intervals is exactly sqrt(bars per year)",
+        abs(ratio - expected) < 0.01,
+    )
+else:
+    check("15. the size ratio between intervals is exactly sqrt(bars per year)", False)
+
+check(
+    "16. an unknown interval falls back to the daily factor rather than raising",
+    vol_target_sizes(df, 20, interval="nonsense").equals(daily),
+)
+
 print()
 if failures:
     print(f"{len(failures)} check(s) FAILED")

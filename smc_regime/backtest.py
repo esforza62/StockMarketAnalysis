@@ -12,7 +12,25 @@ from .strategies import STRATEGIES
 # that the estimate is not dominated by a single gap, short enough to track
 # a regime change in weeks rather than quarters.
 _VOL_WINDOW = 60
-_BARS_PER_YEAR = 252
+
+# Bars per year, PER INTERVAL. Annualising a volatility means scaling by the
+# square root of how many bars fit in a year, so a single constant is only
+# ever right for one bar size. Using the daily 252 everywhere understated
+# hourly vol by 2.55x and 15-minute vol by 5.10x -- which drove almost every
+# intraday position to the 1.0 cap and made sizing inert on those intervals
+# -- while overstating weekly vol by 2.20x and shrinking weekly positions to
+# roughly a third for no reason. Observed on the first nightly that computed
+# sizes for all four: mean size 0.992 on 15m and 0.949 on 1h against 0.665
+# on 1d, with 1w down at 0.385.
+#
+# US equities: ~252 sessions, 6.5 hours each, 26 fifteen-minute bars each.
+_BARS_PER_YEAR = {
+    "1d": 252,
+    "1h": 252 * 6.5,
+    "15m": 252 * 26,
+    "1w": 52,
+}
+_DEFAULT_BARS_PER_YEAR = 252
 
 
 @dataclass
@@ -49,6 +67,7 @@ def vol_target_sizes(
     target_vol_pct: float,
     window: int = _VOL_WINDOW,
     cap: float = 1.0,
+    interval: str = "1d",
 ) -> pd.Series:
     """Per-bar position fraction that equalises RISK rather than capital.
 
@@ -85,6 +104,11 @@ def vol_target_sizes(
     (trend filter + 20% target reaches -62.0 worst) but at medTot 37.5,
     which is paying for risk twice.
 
+    `interval` selects the annualisation factor and is not optional in
+    spirit: the same 60 bars mean nine trading days on hourly data and
+    sixty weeks on weekly, so scaling both by the daily 252 produces a
+    number that is not a volatility at all.
+
     A cap of 1.0 means this can only ever reduce a position, never lever
     one up: a very calm name is held at full size, not at three times it.
     Scaling UP a calm name would be the natural next step and is
@@ -94,7 +118,8 @@ def vol_target_sizes(
     if target_vol_pct <= 0:
         raise ValueError("target_vol_pct must be positive")
     returns = df["Close"].pct_change()
-    vol = returns.rolling(window).std() * np.sqrt(_BARS_PER_YEAR) * 100
+    bars_per_year = _BARS_PER_YEAR.get(interval, _DEFAULT_BARS_PER_YEAR)
+    vol = returns.rolling(window).std() * np.sqrt(bars_per_year) * 100
     sizes = (target_vol_pct / vol).clip(upper=cap)
     # Before `window` bars there is no estimate. Full size is the honest
     # default -- it is what the engine did before sizing existed, so an
@@ -198,6 +223,7 @@ def backtest_strategy(
     max_hold_bars: int | None = None,
     size_series: pd.Series | None = None,
     target_vol_pct: float | None = None,
+    interval: str = "1d",
 ) -> list[Trade]:
     """target_vol_pct is the convenience form of size_series: it builds one
     from this ticker's own bars via vol_target_sizes(). Passing both is a
@@ -205,7 +231,7 @@ def backtest_strategy(
     if size_series is not None and target_vol_pct is not None:
         raise ValueError("pass size_series or target_vol_pct, not both")
     if target_vol_pct is not None:
-        size_series = vol_target_sizes(df, target_vol_pct)
+        size_series = vol_target_sizes(df, target_vol_pct, interval=interval)
     signals = STRATEGIES[strategy](df)
     return run_backtest(
         df, signals,

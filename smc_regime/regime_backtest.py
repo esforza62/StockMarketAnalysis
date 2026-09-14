@@ -115,7 +115,7 @@ def collect_trades(
 
         # One size series per ticker, reused across all 19 strategies --
         # it depends only on the price history, not on the signal.
-        sizes = vol_target_sizes(df, target_vol_pct) if target_vol_pct else None
+        sizes = vol_target_sizes(df, target_vol_pct, interval=interval) if target_vol_pct else None
         for strategy in STRATEGIES:
             for trade in backtest_strategy(df, strategy, size_series=sizes):
                 if trade.entry_date not in regime.index:

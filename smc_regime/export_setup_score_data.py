@@ -211,8 +211,16 @@ def _macro_payload(conn) -> dict:
     # the last fetch chose is the one that appears. Iterating LEVELS alone
     # silently dropped them when the pairs moved out of that list.
     order = [row[0] for row in macro_module.LEVELS]
+    # Only ONE member of each cash/future pair is written on any given
+    # fetch, but the other one's row survives from whenever it was last
+    # current -- the upsert deliberately leaves rows alone so a failed
+    # fetch keeps yesterday's number rather than blanking the strip. Taking
+    # both would show the live index beside a futures quote hours stale,
+    # so the fresher timestamp wins.
     for (cash_symbol, _cl), (fut_symbol, _fl) in macro_module.INDEX_PAIRS:
-        order += [cash_symbol, fut_symbol]
+        candidates = [s for s in (cash_symbol, fut_symbol) if s in by_symbol]
+        if candidates:
+            order.append(max(candidates, key=lambda s: by_symbol[s][5] or ""))
     levels = []
     for symbol in order:
         row = by_symbol.get(symbol)

@@ -120,12 +120,40 @@ def fetch_level(symbol: str) -> dict | None:
         earlier = [c for stamp, c in bars if datetime.fromtimestamp(stamp, zone).date() < latest_date]
         prior = earlier[-1] if earlier else None
 
+        # PREFER YAHOO'S OWN CHANGE over one derived from the daily bars.
+        # The bar series is spliced, not a single instrument, and the two
+        # ways it lies are both invisible in the number itself:
+        #
+        #   * A FUTURES ROLL swaps the contract underneath the series. On
+        #     2026-09-15 BZ=F rolled to a month trading ~$5 lower in a
+        #     backwardated curve, so today's price over yesterday's close
+        #     read -2.27% on a session Brent was UP 2.27%. The sign was
+        #     wrong, next to WTI +3.2%, and nothing about the bars said so.
+        #   * A 23-HOUR FUTURE settles on a different boundary than its
+        #     daily bar closes on, so ES=F/NQ=F read +0.32%/+0.35% against
+        #     the bars while the vendor -- and cash SPX at -0.52% -- had
+        #     them down ~0.6%. That is the overnight strip's headline pair.
+        #
+        # Yahoo computes this against the right reference in both cases.
+        # Across the ten configured symbols the two methods agree to three
+        # decimals on the seven that are neither rolling nor overnight
+        # futures, so this is a no-op except where the bars are wrong.
+        derived = None if prior in (None, 0) else (float(last) / prior - 1) * 100
+        vendor = meta.get("regularMarketChangePercent")
+        try:
+            vendor = None if vendor is None else float(vendor)
+        except (TypeError, ValueError):
+            vendor = None
+        if vendor is not None and vendor != vendor:  # NaN
+            vendor = None
+
         return {
             "symbol": symbol,
             "price": float(last),
-            # None, not 0.0, when there is no prior close to compare against:
-            # a flat reading and an unknown one are different claims.
-            "change_pct": None if prior in (None, 0) else (float(last) / prior - 1) * 100,
+            # None, not 0.0, when there is neither a vendor figure nor a
+            # prior close to compare against: a flat reading and an unknown
+            # one are different claims.
+            "change_pct": vendor if vendor is not None else derived,
             # Whether this instrument has traded today in its own timezone,
             # which is what decides cash-versus-future below.
             "traded_today": bool(bars and datetime.fromtimestamp(bars[-1][0], zone).date() >= today),

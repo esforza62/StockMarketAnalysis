@@ -217,6 +217,89 @@ check(
     and all(len(pair) == 2 and len(pair[0]) == 2 for pair in macro.INDEX_PAIRS),
 )
 
+# --- Futures rolls and settlement boundaries -------------------------------
+#
+# Both of these were live bugs on 2026-09-15, and both produced a number
+# that looked completely ordinary on the page.
+
+
+def rolled_chart(bars, price, vendor_change):
+    """A chart whose bar series disagrees with the vendor's own change.
+
+    That is exactly what a contract roll looks like from outside: the bars
+    belong to the old contract, the price to the new one.
+    """
+    payload = fake_chart(bars, price)
+    payload["chart"]["result"][0]["meta"]["regularMarketChangePercent"] = vendor_change
+    return payload
+
+
+# BZ=F on 2026-09-15: bars on the old contract (105.68 prior close), price
+# on a new one trading ~$5 lower. Deriving change from the bars gives
+# -2.27% on a session Brent was up 2.27% -- the sign itself is wrong.
+try:
+    macro.requests = with_response(rolled_chart(
+        [(epoch(2026, 9, 14), 105.68), (epoch(2026, 9, 15), 103.30)],
+        price=103.30, vendor_change=2.287))
+    rolled = macro.fetch_level("BZ=F")
+finally:
+    macro.requests = real_requests
+
+check(
+    "18. a contract roll does not invert the sign of the day's change",
+    rolled["change_pct"] is not None and rolled["change_pct"] > 0,
+)
+
+check(
+    "19. the vendor's change is used verbatim across a roll",
+    abs(rolled["change_pct"] - 2.287) < 1e-9,
+)
+
+# ES=F overnight: the daily bar closes on a different boundary than the
+# contract settles on, so the bars read +0.32% on a session the future was
+# down ~0.6% -- while cash SPX, right beside it on the strip, read -0.52%.
+try:
+    macro.requests = with_response(rolled_chart(
+        [(epoch(2026, 9, 14), 7600.0), (epoch(2026, 9, 15), 7624.0)],
+        price=7624.0, vendor_change=-0.569))
+    overnight = macro.fetch_level("ES=F")
+finally:
+    macro.requests = real_requests
+
+check(
+    "20. an overnight future is measured against settlement, not its daily bar",
+    overnight["change_pct"] is not None and abs(overnight["change_pct"] + 0.569) < 1e-9,
+)
+
+# The fallback has to survive, or every symbol Yahoo omits the field for
+# silently loses its change instead of falling back to the bars.
+try:
+    macro.requests = with_response(fake_chart(
+        [(epoch(2026, 9, 10), 100.0), (epoch(2026, 9, 11), 110.0)], price=110.0))
+    no_vendor = macro.fetch_level("TEST")
+finally:
+    macro.requests = real_requests
+
+check(
+    "21. with no vendor change, the bar-derived figure is still used",
+    no_vendor["change_pct"] is not None and abs(no_vendor["change_pct"] - 10.0) < 1e-9,
+)
+
+# A non-numeric or NaN vendor field must not poison the row.
+for bad in ("n/a", float("nan"), None):
+    try:
+        macro.requests = with_response(rolled_chart(
+            [(epoch(2026, 9, 10), 100.0), (epoch(2026, 9, 11), 110.0)],
+            price=110.0, vendor_change=bad))
+        junk = macro.fetch_level("TEST")
+    finally:
+        macro.requests = real_requests
+    check(
+        f"22. a junk vendor change ({bad!r}) falls back to the bars",
+        junk is not None and junk["change_pct"] is not None
+        and abs(junk["change_pct"] - 10.0) < 1e-9,
+    )
+
 print()
 if failures:
     print(f"{len(failures)} check(s) FAILED")

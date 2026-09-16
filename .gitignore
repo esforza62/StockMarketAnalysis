@@ -10,3 +10,9 @@ backtest_logs/smc_regime.db
 # Cached price bars from smc_regime.grade_backfill -- re-fetchable, and
 # one full daily history per tracked ticker.
 .cache/
+
+# Built dashboard pages. The TEMPLATES in smc_regime/dashboards/ are tracked;
+# a built page is ~800KB of baked database snapshot and is not. Build one with
+# python -m smc_regime.build_dashboard <name> --out <file>.
+/setup_grades.html
+/regime_desk.html

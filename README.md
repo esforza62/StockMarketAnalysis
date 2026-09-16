@@ -134,6 +134,32 @@ There's no automatic sync between the two: if `RegimeThresholds` or the
 indicator formulas in `smc_regime/indicators.py` change, update the Pine
 script by hand to match.
 
+### Dashboards
+
+The two HTML dashboards are versioned as **templates** -- markup carrying an
+empty payload -- under `smc_regime/dashboards/`. A publishable page is built
+by baking a fresh export into one:
+
+```bash
+# export and bake in one step
+python -m smc_regime.build_dashboard setup_grades --out setup_grades.html
+python -m smc_regime.build_dashboard regime_desk  --out regime_desk.html
+
+# or bake a payload you already exported
+python -m smc_regime.export_setup_score_data --out-file payload.json
+python -m smc_regime.build_dashboard setup_grades --data payload.json --out page.html
+```
+
+The split is deliberate. A template is ~60KB of reviewable markup; a built
+page is ~800KB, nearly all of it a snapshot of the database, which would
+land as an unreadable diff every night. So the markup is tracked and the
+built pages are not -- do not commit them.
+
+Each template is a working page on its own: its payload is empty but
+structurally complete, so opening one directly gives the real chrome in its
+empty state. That makes the markup editable with no database around, and
+means a broken template fails when you open it rather than during a publish.
+
 ### Next steps
 
 - Validate labels by eye against a chart for a few tickers with known regimes, tune thresholds

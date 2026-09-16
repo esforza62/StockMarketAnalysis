@@ -1,0 +1,1309 @@
+<title>Setup Grades</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --bg: #F3F6F8;
+    --surface: #FFFFFF;
+    --surface-alt: #EAEFF3;
+    --border: #D8E0E7;
+    --text: #16212C;
+    --text-muted: #5B6B7A;
+    --accent: #0E9C8C;
+    --accent-soft: #E1F4F1;
+    --pos: #2F8F5B;
+    --neg: #C23B4B;
+    /* Soft fill behind a "very negative" news chip -- the only place
+       this page fills with red, reserved for the strongest band. */
+    --neg-soft: #FBE9EB;
+    --choppy: #6B7A8A;
+    --choppy-soft: #EAEDF0;
+    --trending: #2E6FBE;
+    --trending-soft: #E7F0FB;
+    --parabolic: #C9701E;
+    --parabolic-soft: #FBEEDF;
+    /* Grade scale: a quality gradient (strong -> unremarkable), deliberately
+       not a red/green safety signal -- a D is "no confirmed edge yet", not
+       a warning. */
+    --grade-a: #2F8F5B;
+    --grade-a-soft: #E5F4EC;
+    --grade-b: #0E9C8C;
+    --grade-b-soft: #E1F4F1;
+    --grade-c: #C68A1F;
+    --grade-c-soft: #FBF1DE;
+    --grade-d: #8A93A0;
+    --grade-d-soft: #EEF0F3;
+    --shadow: 0 1px 2px rgba(22,33,44,0.06), 0 8px 24px -12px rgba(22,33,44,0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1620;
+      --surface: #16212D;
+      --surface-alt: #1C2836;
+      --border: #29394A;
+      --text: #E7ECF1;
+      --text-muted: #8A9AAA;
+      --accent: #3FC7B8;
+      --accent-soft: rgba(63,199,184,0.14);
+      --pos: #5CC98A;
+      --neg: #E2707A;
+      --neg-soft: rgba(226,112,122,0.16);
+      --choppy: #97A7B6;
+      --choppy-soft: rgba(151,167,182,0.14);
+      --trending: #5B9FE0;
+      --trending-soft: rgba(91,159,224,0.14);
+      --parabolic: #E2933F;
+      --parabolic-soft: rgba(226,147,63,0.14);
+      --grade-a: #5CC98A;
+      --grade-a-soft: rgba(92,201,138,0.14);
+      --grade-b: #3FC7B8;
+      --grade-b-soft: rgba(63,199,184,0.14);
+      --grade-c: #E0AC44;
+      --grade-c-soft: rgba(224,172,68,0.14);
+      --grade-d: #93A0AE;
+      --grade-d-soft: rgba(147,160,174,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0E1620;
+    --surface: #16212D;
+    --surface-alt: #1C2836;
+    --border: #29394A;
+    --text: #E7ECF1;
+    --text-muted: #8A9AAA;
+    --accent: #3FC7B8;
+    --accent-soft: rgba(63,199,184,0.14);
+    --pos: #5CC98A;
+    --neg: #E2707A;
+    --neg-soft: rgba(226,112,122,0.16);
+    --choppy: #97A7B6;
+    --choppy-soft: rgba(151,167,182,0.14);
+    --trending: #5B9FE0;
+    --trending-soft: rgba(91,159,224,0.14);
+    --parabolic: #E2933F;
+    --parabolic-soft: rgba(226,147,63,0.14);
+    --grade-a: #5CC98A;
+    --grade-a-soft: rgba(92,201,138,0.14);
+    --grade-b: #3FC7B8;
+    --grade-b-soft: rgba(63,199,184,0.14);
+    --grade-c: #E0AC44;
+    --grade-c-soft: rgba(224,172,68,0.14);
+    --grade-d: #93A0AE;
+    --grade-d-soft: rgba(147,160,174,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
+
+  a { color: var(--accent); }
+
+  /* ---- Header ---- */
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 24px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+
+  .titleblock h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 6px;
+  }
+
+  .titleblock p {
+    margin: 0;
+    color: var(--text-muted);
+    max-width: 56ch;
+    font-size: 14px;
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+
+  .meta .row { display: flex; gap: 8px; align-items: baseline; }
+  .meta .row strong { color: var(--text); font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+
+  .banner {
+    background: var(--grade-c-soft);
+    border: 1px solid var(--grade-c);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+  .banner strong { color: var(--grade-c); }
+
+  /* ---- Grade distribution strip ---- */
+  .grade-strip {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .grade-tile {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+    border-left: 3px solid var(--tile-color, var(--border));
+  }
+  .grade-tile .label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .grade-tile .swatch { width: 8px; height: 8px; border-radius: 50%; background: var(--tile-color); }
+  .grade-tile .count { font-family: "IBM Plex Mono", monospace; font-size: 26px; font-weight: 600; }
+  .grade-tile .pct { color: var(--text-muted); font-size: 13px; margin-left: 6px; }
+
+  /* ---- Macro strip ---- */
+  /* Quieter than the grade tiles on purpose: this is the weather, not the
+     scoreboard. Nothing here is scored, and it should not compete with the
+     grade counts for the eye. */
+  .macro-strip {
+    margin-top: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-alt);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 22px;
+    font-size: 13px;
+  }
+  .macro-item { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+  /* The strip carries a different vintage from the grades above it and
+     refreshes several times a day, so it states its own time where the
+     numbers are -- not in the methodology note, which sits below the fold
+     on a phone and left the header's grade timestamp as the only visible
+     one. That made a 2pm strip read as 3am data. */
+  .macro-asof {
+    display: flex; align-items: baseline; gap: 6px;
+    font-size: 11.5px; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding-right: 4px; border-right: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .macro-asof strong { font-family: "IBM Plex Mono", monospace; font-weight: 600; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .macro-item .mlabel { color: var(--text-muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .macro-item .mval { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .macro-item .mchg { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  /* Marks a reading that belongs to a different trading session than the
+     rest of the strip -- crude and gold after the 18:00 futures reopen,
+     while the cash indices still show the session that just closed. */
+  .macro-item .msess {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 3px; padding: 0 4px; margin-left: 1px; white-space: nowrap;
+  }
+  .macro-sep { flex-basis: 100%; height: 0; }
+  .macro-events { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+  .macro-event {
+    display: inline-flex; align-items: baseline; gap: 6px;
+    padding: 2px 9px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--surface);
+    font-size: 12px; white-space: nowrap;
+  }
+  .macro-event .when { color: var(--text-muted); font-size: 11px; }
+  /* Today and tomorrow are the only ones that get colour: a Fed decision
+     three weeks out is a note, the same decision this afternoon changes
+     what you do with every row below. */
+  .macro-event.imminent { border-color: var(--neg); color: var(--neg); background: var(--neg-soft); font-weight: 600; }
+  .macro-event.soon { border-color: var(--text-muted); }
+  /* WHAT the event is matters as much as when. A rate decision and a
+     building-permits print are not the same news, and rendering them
+     identically buries the one that moves every row on this page. Carried
+     by weight and a leading marker rather than another colour, so it
+     stacks with the timing classes above instead of fighting them. */
+  .macro-event.key { font-weight: 600; color: var(--text); }
+  .macro-event.key::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; align-self: center; }
+  .macro-event.imminent.key::before { background: var(--neg); }
+  .macro-note { color: var(--text-muted); font-size: 11.5px; flex-basis: 100%; }
+  .macro-note.warn { color: var(--neg); }
+
+  /* ---- Toolbar ---- */
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .chip-row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .chip {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .chip.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .chip[data-grade="A"].active { background: var(--grade-a-soft); border-color: var(--grade-a); color: var(--grade-a); }
+  .chip[data-grade="B"].active { background: var(--grade-b-soft); border-color: var(--grade-b); color: var(--grade-b); }
+  .chip[data-grade="C"].active { background: var(--grade-c-soft); border-color: var(--grade-c); color: var(--grade-c); }
+  .chip[data-grade="D"].active { background: var(--grade-d-soft); border-color: var(--grade-d); color: var(--grade-d); }
+
+  .spacer { flex: 1; }
+
+  select, input[type="search"] {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+  }
+  select:focus, input:focus, .chip:focus, button:focus, tr:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  input[type="search"] { width: 160px; }
+
+  /* ---- Table ---- */
+  .table-shell {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .table-scroll { overflow-x: auto; }
+
+  table { width: 100%; border-collapse: collapse; min-width: 880px; }
+
+  thead th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-alt);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th.sorted { color: var(--accent); }
+  thead th .arrow { font-size: 9px; margin-left: 3px; opacity: 0.7; }
+
+  tbody tr.row {
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+  }
+  tbody tr.row:hover { background: var(--surface-alt); }
+  tbody tr.row:last-child { border-bottom: none; }
+
+  td { padding: 11px 14px; vertical-align: middle; }
+
+  .ticker-cell .sym { font-weight: 700; font-size: 14px; }
+  .ticker-cell .sub { color: var(--text-muted); font-size: 12px; margin-top: 1px; }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .pill.choppy { background: var(--choppy-soft); color: var(--choppy); }
+  .pill.trending { background: var(--trending-soft); color: var(--trending); }
+  .pill.parabolic { background: var(--parabolic-soft); color: var(--parabolic); }
+  .pill .dir { font-size: 11px; }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 7px;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .grade-cell { display: inline-flex; align-items: center; gap: 5px; }
+  /* How long the grade has held. Muted and small: it qualifies the letter
+     beside it rather than competing with it. */
+  .held {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+  }
+  .held.censored { opacity: 0.85; }
+  .held.fresh { color: var(--accent); }
+  /* A streak that crossed an isolated flip. Dashed underline rather than a
+     different figure: the number is still the honest span, but the reader
+     can see at a glance that it was patched rather than clean. */
+  .held.patched { border-bottom: 1px dashed var(--border); }
+
+  /* Sits next to the badge naming the grade on the other side of the nearby
+     cut. Muted and outlined rather than filled, so it reads as a caveat on
+     the badge instead of competing with it for attention. */
+  .borderline {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px dashed var(--border);
+    color: var(--text-muted);
+    cursor: help;
+    white-space: nowrap;
+  }
+  /* Fell just short of the better grade -- nudge it toward that grade's hue
+     so it reads as "really this", while "above" stays neutral-grey because
+     it is a fragility warning, not an upgrade. */
+  .borderline.below { color: var(--accent); border-color: var(--accent); opacity: 0.75; }
+
+  .borderline-note {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 9px 13px;
+    margin-bottom: 16px;
+  }
+  .borderline-note strong { color: var(--text); }
+
+  /* Row chips: earnings proximity and news tone, on the ticker cell's sub
+     line. Both are context the trader needs BEFORE opening the row, and
+     neither moves the grade -- so they are small, and they carry a glyph as
+     well as a colour so the band survives a greyscale print or a colour
+     vision difference. */
+  .row-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    padding: 2px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    white-space: nowrap;
+    cursor: help;
+    margin-left: 6px;
+    vertical-align: 1px;
+  }
+  /* Only two states, because only two matter at a glance: inside the week
+     (a swing entry now would be holding through the print) and merely
+     approaching. Anything further out lives in the expanded row. */
+  .row-chip.er-imminent { color: var(--parabolic); border-color: var(--parabolic); background: var(--parabolic-soft); }
+  .row-chip.er-soon { color: var(--text-muted); }
+  /* Dashed while Yahoo still calls the date an estimate -- a date that can
+     move by a week should not look like a fixture. */
+  .row-chip.er-estimated { border-style: dashed; }
+  .row-chip.news-pos { color: var(--pos); border-color: var(--pos); }
+  .row-chip.news-neg { color: var(--neg); border-color: var(--neg); }
+  .row-chip.news-verypos { color: var(--pos); border-color: var(--pos); background: var(--grade-a-soft); }
+  .row-chip.news-veryneg { color: var(--neg); border-color: var(--neg); background: var(--neg-soft); }
+  /* Volume beside the tone chip. Sentiment reads the LANGUAGE of a headline
+     and cannot tell whether anyone traded on it; this is the nearest thing
+     to a materiality check on the same row. Neutral in hue on purpose --
+     heavy volume is not good or bad news, it is loud news. */
+  .row-chip.vol-heavy { color: var(--parabolic); border-color: var(--parabolic); background: var(--parabolic-soft); }
+  .row-chip.vol-up { color: var(--text-muted); border-color: var(--parabolic); }
+  .row-chip.vol-thin { color: var(--text-muted); border-style: dashed; }
+
+  .badge.A { background: var(--grade-a-soft); color: var(--grade-a); }
+  .badge.B { background: var(--grade-b-soft); color: var(--grade-b); }
+  .badge.C { background: var(--grade-c-soft); color: var(--grade-c); }
+  .badge.D { background: var(--grade-d-soft); color: var(--grade-d); }
+
+  .score-num { font-family: "IBM Plex Mono", monospace; font-weight: 600; font-size: 14px; }
+
+  /* Trailing performance. Coloured by sign only -- these are context for
+     reading the setup, not part of the grade, so they should not compete
+     with the grade badge for attention. */
+  .perf { font-size: 13px; font-weight: 500; white-space: nowrap; }
+  .perf.pos { color: var(--pos); }
+  .perf.neg { color: var(--neg); }
+  .perf.flat, .perf.none { color: var(--text-muted); }
+
+  .caret { color: var(--text-muted); font-size: 11px; transition: transform 0.15s ease; display: inline-block; }
+  tr.row.expanded .caret { transform: rotate(90deg); }
+
+  tr.detail-row { display: none; }
+  tr.detail-row.open { display: table-row; }
+  tr.detail-row td {
+    background: var(--surface-alt);
+    padding: 16px 20px 20px;
+  }
+
+  .components-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+  }
+
+  .group-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+  }
+  .components-grid + .group-label { margin-top: 18px; }
+
+  /* Reported context, not a scored component -- deliberately styled as a
+     note rather than a card with a points bar, so it can't be misread as
+     contributing to the grade. Shared by all three unscored notes: which
+     strategy fits, what the headlines sound like, and when earnings land. */
+  .context-note {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 10px;
+    margin-top: 18px;
+    padding: 11px 14px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    font-size: 12.5px;
+    line-height: 1.5;
+  }
+  .context-note .tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .context-note .body { flex: 1; min-width: 200px; color: var(--text); }
+  .context-note .body.muted { color: var(--text-muted); }
+  .context-note .body .muted { color: var(--text-muted); }
+  .context-note .body strong { font-family: "IBM Plex Mono", monospace; }
+  .context-note .unscored {
+    font-size: 11px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    white-space: nowrap;
+  }
+  /* The notes stack, so only the first one needs to clear the component
+     grid above it. */
+  .context-note + .context-note { margin-top: 8px; }
+  .component {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .component .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+  }
+  .component .name {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .component .pts { font-family: "IBM Plex Mono", monospace; font-size: 13px; font-weight: 600; }
+  .component .bar-track { height: 5px; border-radius: 3px; background: var(--surface-alt); overflow: hidden; margin-bottom: 7px; }
+  .component .bar-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+  .component .detail { font-size: 12.5px; color: var(--text-muted); line-height: 1.45; }
+
+  .empty-state {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+
+  footer {
+    margin-top: 28px;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    line-height: 1.6;
+  }
+  footer code {
+    font-family: "IBM Plex Mono", monospace;
+    background: var(--surface-alt);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  @media (max-width: 640px) {
+    .macro-strip { gap: 8px 14px; font-size: 12.5px; }
+    .grade-strip { flex-wrap: wrap; }
+    .grade-tile { flex-basis: calc(50% - 6px); }
+    .meta { align-items: flex-start; }
+    header { flex-direction: column; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="titleblock">
+      <h1>Setup Grades</h1>
+      <p>Every tracked ticker's A&ndash;D setup grade, scored on the chart itself: trend structure against the 50/200 MA, RSI read against the regime, MACD momentum, and volume conviction &mdash; plus regime stability, timeframe and peer alignment, and valuation stretch. <strong>Which strategy to trade it with is reported, not scored</strong> &mdash; that question only matters once the setup is worth taking.</p>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <div class="banner" id="demo-banner"></div>
+
+  <div class="grade-strip" id="grade-strip"></div>
+  <div class="macro-strip" id="macro-strip" hidden></div>
+
+  <div class="toolbar">
+    <div class="chip-row" id="grade-filters"></div>
+    <select id="sector-filter"></select>
+    <div class="spacer"></div>
+    <input type="search" id="search" placeholder="Search ticker&hellip;" aria-label="Search ticker">
+  </div>
+
+  <div class="table-shell">
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th data-sort="ticker">Ticker</th>
+            <th data-sort="regime">Regime</th>
+            <th data-sort="grade">Grade</th>
+            <th data-sort="total_points">Score</th>
+            <th data-sort="return_1w">1W</th>
+            <th data-sort="return_1m">1M</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="empty-state" id="empty-state" style="display:none;">No tickers match these filters.</div>
+  </div>
+
+  <footer>
+    Scored purely from the last nightly snapshot &mdash; RSI/MACD/volume/50&ndash;200 MA readings from <code>technicals</code> (captured off each ticker's final bar during the nightly run), regime/streak/peer directions from <code>latest_regime</code>, forward/trailing P/E from Yahoo. No live data fetched at export time. Component weights (trend structure 20 / RSI 15 / MACD 15 / volume conviction 15 / regime streak 10 / daily&ndash;weekly alignment 10 / sector&amp;industry alignment 5 / valuation 10 &mdash; split 6 for the absolute forward multiple, 4 for its direction against trailing, that direction faded toward neutral when the trailing multiple is too high for the ratio to mean anything) are documented defaults in <code>smc_regime/setup_score.py</code>, not fixed. Grade thresholds (A&nbsp;&ge;&nbsp;76, B&nbsp;&ge;&nbsp;68, C&nbsp;&ge;&nbsp;57) were calibrated against this universe's actual spread on the first run carrying real technical readings &mdash; scores ran 40&ndash;90, mean 64 &mdash; targeting roughly A&nbsp;10% / B&nbsp;25% / C&nbsp;40% / D&nbsp;25%. They describe <em>this</em> universe, so re-check them if the tracking list or the weights change materially. Scores bunch tightly near those cuts &mdash; the A band alone averages under 0.4 points between adjacent names &mdash; so anything within 1.0 point of a boundary carries a dashed <span class="borderline below">~X</span> tag naming the grade on the other side: a B tagged <span class="borderline below">~A</span> fell a fraction short and is effectively an A, an A tagged <span class="borderline">~B</span> only just holds it. Read the score, not the letter, on those. RSI is read <em>against the regime</em>: a pullback into the 30s inside a trend is an entry, the same reading at the top of a choppy range is not. Strategy edge from <code>db.best_strategy()</code> is shown as information only and contributes zero points, and so do the two chips on each row. <strong>Headline tone</strong> (&#9650;&#9650; much stronger / &#9650; stronger / &#9660; weaker / &#9660;&#9660; much weaker than this feed's norm; typical gets no chip) is a VADER compound score over the last week of Tiingo headlines, extended with a small finance lexicon. Its bands are <em>percentiles of this feed's own spread</em>, not VADER's generic thresholds: those put 95% of the universe in a single band on the first live run, because ordinary newswire language scores positive (&ldquo;names new CFO&rdquo; is +0.48) and this feed's median headline sits at +0.34. The labels say weaker and stronger rather than negative and positive for the same reason &mdash; calling a +0.15 ticker negative would invent a claim the score does not make. It measures the <em>language a headline chose</em> and nothing else &mdash; it cannot tell a writedown from a reporter reaching for &ldquo;plunges&rdquo;, and it does not know how big the number was. <strong>ER&nbsp;<em>n</em>d</strong> counts calendar days to the next earnings date from Yahoo, chipped only inside three weeks, dashed while Yahoo still calls that date an estimate. Both are stored as raw facts &mdash; a date, a timestamp &mdash; and counted against your own clock when the page loads, so they stay right however long after the export you open it. Neither moves a grade: a name reporting on Thursday is the same setup as one reporting in six weeks, carrying a different risk. A third chip reads <strong><em>n</em>th&nbsp;vol</strong>, because sentiment is the one thing on this page that cannot check itself: it reads the words a headline chose and has no idea whether anyone traded on the story. Volume is the nearest available materiality check &mdash; the last 5 bars' average against the last 50 &mdash; but it is reported as a <em>percentile of that ticker's own history</em>, not as a multiple. A fixed threshold asks a different question of every name: across this universe the ratio marking a ticker's own 95th percentile runs from 1.40&times; to 4.72&times;, and 14% of names never reach 1.5&times; at all, so &ldquo;1.5&times;&rdquo; is unreachable for PG and KO while being an ordinary week for QUBT. Chipped at the 95th percentile and above, or the 5th and below. The expanded row leads with volume and uses the headlines to explain it, which is the causal order &mdash; a spike is evidence something happened, the tone is a guess at what &mdash; and the cell worth looking for is heavy volume with <em>nothing written about it</em>. The two stay separate readings: nothing here establishes that a given spike and a given headline are connected. <strong>The small figure beside each grade</strong> is how long that ticker has held it &mdash; <span class="held">9d</span> means the grade has read the same since then. Like the earnings countdown, only the <em>date</em> is stored and the day count is worked out against your clock when the page loads, so it stays right however long after the export you open it. Two things would otherwise inflate it. A snapshot that runs on a weekend or a market holiday re-files the previous session's closes under a new date, which is not another day at that grade &mdash; consecutive captures with an identical close collapse to one, and this is not hypothetical: a run dispatched on a Saturday night repeated Friday's closes for all 415 tickers and would have added a phantom day to every row on this page. A missed run, by contrast, does <em>not</em> break a streak: if the grade reads the same either side of a skipped night, it carries through, since resetting on every scheduler hiccup would be wrong far more often. Neither does an <em>isolated</em> one-capture flip. Scores bunch within a point of the grade cuts &mdash; which is what the <span class="borderline below">~A</span> tags are about &mdash; so a name sitting a fraction from a boundary changes grade on noise, and a strict streak ends up reporting days since the last wobble rather than how settled the grade is. On the first history deep enough to test, <em>every one</em> of 415 tickers had its current grade interrupted at least once, and a quarter of the board read a streak of one. So a single capture with the same grade either side is crossed rather than counted as a break; two in a row is a real change and does break it, and so does a disagreement at the very edge of the history, which has nothing before it to confirm continuity. Chips that crossed a flip carry a <span class="held patched">dashed underline</span> and name the date and the unbroken run in their tooltip, alongside the plain ratio &mdash; &ldquo;7 of the last 8 captures at grade C&rdquo; &mdash; because a streak that quietly swallowed a reversal would be exactly the false confidence the strict count was free of. A trailing <span class="held censored">+</span> means the streak reaches the start of the captured history and is therefore a <em>floor</em>, not a measurement &mdash; grade capture began on 1 September, so 46 of 415 tickers are currently at that boundary and may have held their grade far longer than shown. <strong>The macro strip</strong> under the grade counts is context and nothing more &mdash; no figure in it touches a grade. Levels (10Y, WTI, Brent, gold, dollar index, VIX, and the S&amp;P/Nasdaq benchmarks) come from Yahoo's chart endpoint, so they are a <em>snapshot from when the page was built</em>, never live: this page cannot fetch anything when you open it, because the artifact sandbox blocks outbound requests. That is fine for a yield or a crude print and actively misleading for overnight futures, which is why the strip always states how old it is. The two equity benchmarks switch by session: during the cash day you get <strong>S&amp;P 500</strong> and <strong>Nasdaq 100</strong>, the indices everything on this page is actually measured against; overnight and pre-market the cash indices are frozen at yesterday's close, so the strip falls back to <strong>S&amp;P futures</strong> and <strong>Nasdaq futures</strong> and says so in the label rather than printing a stale index. The switch is decided by whether the index has traded that day, not by the clock, so market holidays and half-days fall out correctly without a holiday calendar. Event chips work the opposite way round: the <em>date</em> is stored and the countdown is computed against your own clock as the page loads, so &ldquo;in 3d&rdquo; stays right however long after the export you open it. Rate decisions, inflation and jobs prints carry a dot and heavier type because they reprice the whole tape; a housing-starts number does not. The schedule is a committed file (<code>smc_regime/data/macro_calendar.json</code>) rather than a live feed, because the nightly runs in GitHub Actions where the calendar sources are unreachable &mdash; it reaches about a month ahead and <strong>needs refreshing monthly</strong>. An expired calendar would otherwise render an empty week that reads like calm, so the strip says so outright when its own end date has passed. Baked at publish time &mdash; re-run <code>python -m smc_regime.export_setup_score_data</code> and republish to refresh.
+  </footer>
+</div>
+
+<script id="setup-score-data" type="application/json">
+{
+  "run_at": null,
+  "interval": "1d",
+  "min_trades": 15,
+  "ticker_count": 0,
+  "technicals_covered": 0,
+  "news_covered": 0,
+  "grade_counts": {},
+  "macro": {
+    "levels": [],
+    "session_date": null,
+    "as_of": null,
+    "events": [],
+    "covers_through": null,
+    "expired": false
+  },
+  "sectors": [],
+  "tickers": []
+}
+</script>
+
+<script>
+(function () {
+  var raw = document.getElementById('setup-score-data').textContent;
+  var data = JSON.parse(raw);
+  var tickers = data.tickers || [];
+
+  // The four technical components are 65 of the 100 points. Until a nightly
+  // run has written the `technicals` table they all fall back to half
+  // credit, which makes every grade a neutral placeholder rather than a
+  // real read -- say so loudly instead of letting the numbers pass as real.
+  var covered = data.technicals_covered;
+  var banner = document.getElementById('demo-banner');
+  if (covered === 0) {
+    banner.innerHTML = '<strong>Technical readings pending</strong> &mdash; the RSI / MACD / volume / 50&ndash;200 MA components (65 of the 100 points) are new, and the last nightly snapshot predates them. Every ticker is scoring the neutral half-credit fallback for all four, so <strong>these grades are placeholders, not a real read</strong>. They become meaningful after the next nightly run captures the readings.';
+  } else if (covered != null && covered < tickers.length) {
+    banner.innerHTML = '<strong>Partial technical coverage</strong> &mdash; ' + covered + ' of ' + tickers.length + ' tickers have RSI / MACD / volume / MA readings from the last snapshot. The rest score the neutral half-credit fallback on those four components; their expanded rows say which readings are missing.';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return 'n/a';
+    var d = new Date(iso);
+    return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' });
+  }
+
+  var meta = document.getElementById('meta');
+  meta.innerHTML =
+    '<div class="row"><span>Interval</span><strong>' + data.interval + '</strong></div>' +
+    '<div class="row"><span>Tickers scored</span><strong>' + data.ticker_count + '</strong></div>' +
+    // "Last run" read as the age of everything on the page, including the
+    // macro strip, which is refreshed on its own far more often. Naming
+    // what the timestamp actually covers is the whole fix.
+    '<div class="row"><span>Grades as of</span><strong>' + fmtDate(data.run_at) + '</strong></div>' +
+    // Zero here is the shape a missing news key takes, and it looks exactly
+    // like a universe with nothing written about it -- so the count is
+    // shown whenever the export carried the field at all.
+    (data.news_covered == null ? '' :
+      '<div class="row"><span>Headlines read</span><strong>' + data.news_covered + ' / ' + data.ticker_count + '</strong></div>');
+
+  var GRADES = ['A', 'B', 'C', 'D'];
+  var gradeStrip = document.getElementById('grade-strip');
+  var total = data.ticker_count || 1;
+  GRADES.forEach(function (g) {
+    var n = (data.grade_counts && data.grade_counts[g]) || 0;
+    var pct = Math.round((n / total) * 100);
+    var tile = document.createElement('div');
+    tile.className = 'grade-tile';
+    tile.style.setProperty('--tile-color', 'var(--grade-' + g.toLowerCase() + ')');
+    tile.innerHTML =
+      '<div class="label"><span class="swatch"></span>Grade ' + g + '</div>' +
+      '<span class="count mono">' + n + '</span><span class="pct">' + (total ? pct + '%' : '') + '</span>';
+    gradeStrip.appendChild(tile);
+  });
+
+  // ---- Macro strip -------------------------------------------------------
+  // Every figure here is a SNAPSHOT taken when the page was built, never
+  // live: an artifact cannot fetch anything at view time (the sandbox
+  // blocks outbound requests), so the honest move is to stamp the strip
+  // with when it was read and let the reader judge. Day counts, by
+  // contrast, ARE computed against the reader's own clock from stored
+  // dates -- the same treatment the earnings chip gets, and the reason
+  // "FOMC today" stays true however long after the export you open this.
+  function macroAgeHours(iso) {
+    if (!iso) return null;
+    return (Date.now() - new Date(iso).getTime()) / 36e5;
+  }
+
+  function fmtLevel(v, unit) {
+    var digits = Math.abs(v) >= 1000 ? 0 : 2;
+    var body = v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+    return unit === '$' ? '$' + body : body + (unit === '%' ? '%' : '');
+  }
+
+  function daysUntilUTC(iso) {
+    var then = new Date(iso);
+    var a = Date.UTC(then.getUTCFullYear(), then.getUTCMonth(), then.getUTCDate());
+    var now = new Date();
+    var b = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.round((a - b) / 864e5);
+  }
+
+  var _MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Formatted from the STRING, never through new Date(): an ISO date is
+  // parsed as UTC midnight, so a viewer in New York would see the session
+  // labelled a day early -- the same timezone trap the run timestamps hit.
+  function sessionLabel(iso) {
+    var p = String(iso || '').split('-');
+    if (p.length !== 3) return '';
+    var mon = _MON[parseInt(p[1], 10) - 1];
+    return mon ? mon + ' ' + parseInt(p[2], 10) : '';
+  }
+
+  function whenLabel(d) {
+    if (d < 0) return 'today';
+    if (d === 0) return 'today';
+    if (d === 1) return 'tomorrow';
+    return 'in ' + d + 'd';
+  }
+
+  (function renderMacro() {
+    var m = data.macro;
+    var host = document.getElementById('macro-strip');
+    if (!m || ((!m.levels || !m.levels.length) && (!m.events || !m.events.length))) return;
+    var parts = [];
+
+    if (m.as_of) {
+      var t = new Date(m.as_of);
+      parts.push('<span class="macro-asof">levels <strong>' +
+        t.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) +
+        '</strong></span>');
+    }
+
+    (m.levels || []).forEach(function (l) {
+      var chg = l.change_pct == null ? '' :
+        '<span class="mchg" style="color:' + (l.change_pct >= 0 ? 'var(--pos)' : 'var(--neg)') + '">' +
+        (l.change_pct >= 0 ? '+' : '') + l.change_pct.toFixed(2) + '%</span>';
+      // A future quoted after the evening reopen is trading TOMORROW's
+      // session, so its change is measured against a settlement the cash
+      // market has not reached. Unlabelled, WTI reads -0.5% on an
+      // afternoon it settled up 4%.
+      var sess = l.off_session ? sessionLabel(l.session_date) : '';
+      var badge = sess ? '<span class="msess">' + sess + ' sess</span>' : '';
+      var tip = l.symbol + ' \u2014 last price and its move against the prior close, read when this page was built'
+        + (sess ? '. Trading the ' + sess + ' session, not the one the rest of this strip is showing.' : '');
+      parts.push(
+        '<span class="macro-item" title="' + tip + '">' +
+        '<span class="mlabel">' + l.label + '</span>' +
+        '<span class="mval">' + fmtLevel(l.price, l.unit) + '</span>' + chg + badge + '</span>'
+      );
+    });
+
+    if ((m.events || []).length) {
+      parts.push('<span class="macro-sep"></span>');
+      var chips = m.events.map(function (e) {
+        var d = daysUntilUTC(e.at);
+        // Fed, inflation and jobs are the releases that reprice the whole
+        // tape; everything else is a data point. The distinction is the
+        // user's own ask -- "Fed meeting today, CPI print" -- not a
+        // judgement this page is making on their behalf.
+        var KEY = { fed: 1, inflation: 1, jobs: 1 };
+        var cls = (d <= 1 ? 'imminent' : (d <= 3 ? 'soon' : '')) + (KEY[e.category] ? ' key' : '');
+        return '<span class="macro-event ' + cls + '" title="' + e.title + ' \u2014 scheduled, not a result. Not scored.">' +
+               e.title + ' <span class="when">' + whenLabel(d) + '</span></span>';
+      });
+      parts.push('<span class="macro-events">' + chips.join('') + '</span>');
+    }
+
+    var notes = [];
+    var age = macroAgeHours(m.as_of);
+    if (age != null) {
+      // Futures are the reason this sentence exists. They trade overnight,
+      // so a number baked at 07:00 UTC looks current at the open and is not.
+      notes.push('Levels are a snapshot read ' +
+        (age < 1 ? 'less than an hour' : Math.round(age) + ' hours') +
+        ' ago, not live \u2014 overnight futures especially will have moved since.');
+    }
+    if (m.expired) {
+      notes.push('<strong>The event calendar has expired</strong> (covered through ' +
+        (m.covers_through || 'an unknown date') + '), so an empty schedule here means nobody refreshed it, not a quiet week.');
+    } else if (m.covers_through) {
+      notes.push('Event schedule runs through ' + m.covers_through + '; nothing is shown beyond that date.');
+    }
+    if (notes.length) {
+      parts.push('<span class="macro-note' + (m.expired ? ' warn' : '') + '">' + notes.join(' ') + '</span>');
+    }
+
+    host.innerHTML = parts.join('');
+    host.hidden = false;
+  })();
+
+  var state = { grade: null, sector: '', search: '', sortKey: 'total_points', sortDir: -1, expanded: null };
+
+  var gradeFilters = document.getElementById('grade-filters');
+  GRADES.forEach(function (g) {
+    var btn = document.createElement('button');
+    btn.className = 'chip';
+    btn.dataset.grade = g;
+    btn.textContent = g;
+    btn.addEventListener('click', function () {
+      state.grade = state.grade === g ? null : g;
+      render();
+    });
+    gradeFilters.appendChild(btn);
+  });
+
+  var sectorSelect = document.getElementById('sector-filter');
+  var sectorOpt = document.createElement('option');
+  sectorOpt.value = '';
+  sectorOpt.textContent = 'All sectors';
+  sectorSelect.appendChild(sectorOpt);
+  (data.sectors || []).forEach(function (s) {
+    var opt = document.createElement('option');
+    opt.value = s;
+    opt.textContent = s;
+    sectorSelect.appendChild(opt);
+  });
+  sectorSelect.addEventListener('change', function () {
+    state.sector = sectorSelect.value;
+    render();
+  });
+
+  document.getElementById('search').addEventListener('input', function (e) {
+    state.search = e.target.value.trim().toUpperCase();
+    render();
+  });
+
+  document.querySelectorAll('thead th[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var key = th.dataset.sort;
+      if (state.sortKey === key) {
+        state.sortDir *= -1;
+      } else {
+        state.sortKey = key;
+        state.sortDir = key === 'ticker' || key === 'regime' ? 1 : -1;
+      }
+      render();
+    });
+  });
+
+  var REGIME_RANK = { parabolic: 0, trending: 1, choppy: 2 };
+  var GRADE_RANK = { A: 0, B: 1, C: 2, D: 3 };
+
+  function directionArrow(dir) {
+    if (dir === 'up') return '&uarr;';
+    if (dir === 'down') return '&darr;';
+    if (dir === 'flat') return '&rarr;';
+    return '';
+  }
+
+  // Scores bunch up hard near the cuts, so the letter can overstate how
+  // decisive the number is. Mark anything within a point of a boundary with
+  // the grade on the other side of it: a B tagged "~A" fell a fraction
+  // short, an A tagged "~B" is only just holding on. Both mean "read the
+  // score, not the letter".
+  function article(grade) { return grade === 'A' ? 'an' : 'a'; }
+
+  // Days at the current grade, computed from a stored DATE against the
+  // reader's clock -- the same treatment the earnings countdown gets, and
+  // for the same reason: a day count baked into the payload is wrong the
+  // morning after it is written.
+  //
+  // "8d+" rather than "8d" when the streak reaches the start of the
+  // captured history: the grade has held for at least that long and quite
+  // possibly much longer, and we have no way to tell which. 46 of 415
+  // tickers are at that boundary today, so this is the common case.
+  function heldChip(t) {
+    if (!t.grade_since) return '';
+    var days = daysUntilUTC(t.grade_since) * -1;
+    if (days < 0) days = 0;
+    var censored = t.grade_censored === true;
+    var flips = t.grade_flips || [];
+    var label = days === 0 ? 'new' : days + 'd' + (censored ? '+' : '');
+
+    var bits = [];
+    bits.push('Grade ' + t.grade + ' since ' + t.grade_since +
+      (censored ? ', which is as far back as the captured history goes \u2014 a floor, not a measurement, so it may have held this grade far longer.' : '.'));
+    if (t.grade_total != null && t.grade_captures != null) {
+      bits.push('That is ' + t.grade_total + ' of the last ' + t.grade_captures + ' captures at grade ' + t.grade + '.');
+    }
+    if (flips.length) {
+      // Naming the dates is the point: a streak that absorbed a reversal
+      // and a streak that never had one are different facts, and the
+      // reader should be able to tell which they are looking at.
+      var when = flips.map(function (f) { return f.grade + ' on ' + f.at.slice(5); }).join(', ');
+      bits.push('Crossed ' + plural(flips.length, 'isolated one-capture flip') + ' (' + when +
+        '); single reversals with the same grade either side are not treated as a break, because scores sit close enough to the grade cuts to flip on noise. '
+        + 'The unbroken run is ' + plural(t.grade_strict, 'capture') + '.');
+    }
+    bits.push('Re-filed sessions \u2014 a run on a weekend or market holiday repeating the prior close \u2014 are collapsed, and a missed run does not break the streak.');
+
+    var cls = (censored ? 'censored' : (days === 0 ? 'fresh' : '')) + (flips.length ? ' patched' : '');
+    return '<span class="held ' + cls + '" title="' + bits.join(' ') + '">' + label + '</span>';
+  }
+
+  function borderlineChip(b) {
+    if (!b) return '';
+    var title = b.direction === 'below'
+      ? b.gap.toFixed(1) + ' points short of ' + b.adjacent + ' (cut at ' + b.cut.toFixed(0) + ') — effectively ' + article(b.adjacent) + ' ' + b.adjacent + ' setup'
+      : 'only ' + b.gap.toFixed(1) + ' points above the ' + b.adjacent + ' cut (' + b.cut.toFixed(0) + ') — a small move flips it';
+    return '<span class="borderline ' + b.direction + '" title="' + title + '">~' + b.adjacent + '</span>';
+  }
+
+  function borderlineNote(b) {
+    if (!b) return '';
+    var text = b.direction === 'below'
+      ? '<strong>Borderline</strong> &mdash; ' + b.gap.toFixed(1) + ' point' + (b.gap === 1 ? '' : 's') + ' short of grade ' + b.adjacent + ' (cut at ' + b.cut.toFixed(0) + '). Effectively ' + article(b.adjacent) + ' ' + b.adjacent + ' setup; the letter understates it.'
+      : '<strong>Borderline</strong> &mdash; only ' + b.gap.toFixed(1) + ' point' + (b.gap === 1 ? '' : 's') + ' above the grade ' + b.adjacent + ' cut (' + b.cut.toFixed(0) + '). It holds this grade narrowly; a small move flips it.';
+    return '<div class="borderline-note">' + text + '</div>';
+  }
+
+  // Trailing performance, reported not scored. Null when the series does not
+  // reach back that far (a recent listing has no one-month return) -- shown
+  // as a dash rather than 0.0%, which would read as "flat" instead of
+  // "unknown".
+  function perfCell(v) {
+    if (v === null || v === undefined) return '<span class="perf none">&mdash;</span>';
+    var cls = v > 0 ? 'pos' : (v < 0 ? 'neg' : 'flat');
+    return '<span class="perf ' + cls + ' mono">' + (v > 0 ? '+' : '') + v.toFixed(1) + '%</span>';
+  }
+
+  // Earnings and news arrive as raw facts -- a DATE and the timestamp the
+  // headlines were read -- never as a baked countdown. This page is a
+  // snapshot that can be opened days after the export that produced it, and
+  // a stored "in 6 days" would still claim 6 days long after the print. Both
+  // figures are derived here, against the viewer's own calendar.
+  var DAY_MS = 86400000;
+
+  function daysUntil(ymd) {
+    if (!ymd) return null;
+    var parts = String(ymd).split('-');
+    if (parts.length !== 3) return null;
+    var now = new Date();
+    var target = Date.UTC(+parts[0], +parts[1] - 1, +parts[2]);
+    var today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((target - today) / DAY_MS);
+  }
+
+  function daysSince(iso) {
+    if (!iso) return null;
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return null;
+    return Math.max(0, Math.floor((Date.now() - t) / DAY_MS));
+  }
+
+  function plural(n, word) { return n + ' ' + word + (n === 1 ? '' : 's'); }
+
+  // Chipped only inside three weeks -- roughly as far out as a swing
+  // position opened today would still be held. Beyond that the date is a
+  // diary entry rather than a trade consideration, and 400 rows reading
+  // "in 63d" would bury the ones that matter. The expanded row shows the
+  // date whatever the distance.
+  var ER_CHIP_DAYS = 21;
+  var ER_IMMINENT_DAYS = 7;
+
+  function earningsChip(t) {
+    var d = daysUntil(t.earnings_date);
+    if (d === null || d < 0 || d > ER_CHIP_DAYS) return '';
+    var cls = 'row-chip ' + (d <= ER_IMMINENT_DAYS ? 'er-imminent' : 'er-soon') +
+      (t.earnings_is_estimate ? ' er-estimated' : '');
+    var when = d === 0 ? 'today' : (d === 1 ? 'tomorrow' : 'in ' + plural(d, 'day'));
+    var title = 'Earnings ' + when + ' (' + t.earnings_date + ') — ' +
+      (t.earnings_is_estimate ? 'Yahoo still calls this date an estimate; it can move' : 'confirmed date') +
+      '. Not scored.';
+    return '<span class="' + cls + '" title="' + title + '">ER ' + (d === 0 ? 'today' : d + 'd') + '</span>';
+  }
+
+  // Five bands off one VADER compound score. The glyph carries the band as
+  // well as the colour, so it survives greyscale and colour vision
+  // differences -- and neutral gets no chip at all, because "the headlines
+  // were unremarkable" is not news.
+  // Bands are percentiles of THIS feed's own spread, not VADER's generic
+  // thresholds -- those put 95% of the universe in one band on the first
+  // live run. Named weaker/stronger rather than negative/positive because
+  // the feed's median headline scores +0.34: calling a +0.15 ticker
+  // "negative" would invent a claim the score does not make. Typical gets
+  // no chip, which is most of them.
+  var NEWS_BANDS = {
+    'much stronger': { cls: 'news-verypos', glyph: '&#9650;&#9650;' },
+    'stronger': { cls: 'news-pos', glyph: '&#9650;' },
+    'weaker': { cls: 'news-neg', glyph: '&#9660;' },
+    'much weaker': { cls: 'news-veryneg', glyph: '&#9660;&#9660;' }
+  };
+
+  function newsTone(n) {
+    if (!n || !n.article_count) return null;
+    return NEWS_BANDS[n.label] || null;
+  }
+
+  function signed(v) { return (v >= 0 ? '+' : '') + v.toFixed(2); }
+
+  // The middle band is the only label that is not a comparative -- "typical
+  // than this feed's norm" is not a sentence. Every band reads against the
+  // same reference, so the reference stays in the phrase either way.
+  function newsPhrase(label) {
+    return label === 'typical' ? 'typical for this feed' : label + ' than this feed\'s norm';
+  }
+
+  function newsChip(n) {
+    var band = newsTone(n);
+    if (!band) return '';
+    var title = 'Headline tone ' + newsPhrase(n.label) + ', across '
+      + plural(n.article_count, 'article') + ' in the last ' + plural(n.window_days, 'day')
+      + ' (avg ' + signed(n.avg_compound) + ' against a universe median of +0.34). '
+      + 'Bands are percentiles of the feed\'s own spread. This reads the words the '
+      + 'headlines chose, not what actually happened. Not scored.';
+    return '<span class="row-chip ' + band.cls + '" title="' + title + '">' + band.glyph + '</span>';
+  }
+
+  // WHERE THIS SITS IN THE TICKER'S OWN HISTORY, not a universal multiple.
+  // Across this universe the ratio marking a ticker's own 95th percentile
+  // runs from 1.40x (PG) to 4.72x (FER) -- a 3.4x spread -- and 14% of names
+  // never reach 1.5x at all, so a fixed threshold silently asks a different
+  // question of every ticker: unreachable for KO and PEP, an ordinary week
+  // for QUBT. The percentile asks the same one of all of them.
+  var VOL_PCT_HEAVY = 99, VOL_PCT_UP = 95, VOL_PCT_THIN = 5;
+
+  function ordinal(n) {
+    var v = Math.round(n), s = ["th", "st", "nd", "rd"], m = v % 100;
+    return v + (s[(m - 20) % 10] || s[m] || s[0]);
+  }
+
+  // Volume says SOMETHING happened; news says what. Order matters -- the
+  // interesting cell is a spike with no story attached.
+  function volumeBand(t) {
+    var p = t.volume_pctile;
+    if (p === null || p === undefined) return null;
+    if (p >= VOL_PCT_HEAVY) return {cls: "vol-heavy", word: "heaviest", loud: true};
+    if (p >= VOL_PCT_UP) return {cls: "vol-up", word: "unusually heavy", loud: true};
+    if (p <= VOL_PCT_THIN) return {cls: "vol-thin", word: "unusually thin", loud: false};
+    return null;
+  }
+
+  function volumeChip(t) {
+    var band = volumeBand(t);
+    if (!band) return '';
+    var ratio = t.volume_ratio === null || t.volume_ratio === undefined ? null : t.volume_ratio.toFixed(2) + 'x';
+    var title = 'Volume over the last 5 bars is ' + band.word + ' for THIS ticker -- '
+      + ordinal(t.volume_pctile) + ' percentile of its own history'
+      + (ratio ? ', at ' + ratio + ' its 50-bar baseline' : '')
+      + '. Ranked within the name rather than against a fixed multiple, because 1.5x is '
+      + 'unreachable for some tickers and an ordinary week for others. Not scored.';
+    return '<span class="row-chip ' + band.cls + '" title="' + title + '">'
+      + ordinal(t.volume_pctile) + ' vol</span>';
+  }
+
+  // The note leads with volume and uses the headlines to explain it, which is
+  // the causal order: a spike is evidence something happened, the tone is a
+  // guess at what. A loud tape with nothing written about it is the cell worth
+  // seeing, and a fixed-multiple chip would never surface it.
+  function volumeNote(t) {
+    var p = t.volume_pctile, n = t.news;
+    if (p === null || p === undefined) {
+      return contextNote('Volume', 'Not enough history for this ticker to say what is unusual for it.', true);
+    }
+    var band = volumeBand(t);
+    var ratio = t.volume_ratio === null || t.volume_ratio === undefined ? '' :
+      ' (' + t.volume_ratio.toFixed(2) + '&times; its 50-bar baseline)';
+    var where = 'Last 5 bars sit at the <strong>' + ordinal(p) + ' percentile</strong> of this ticker\'s own volume history' + ratio + '.';
+    var story;
+    if (!band) {
+      story = ' Ordinary participation for this name.';
+      return contextNote('Volume', where + story, true);
+    }
+    if (!band.loud) {
+      story = n && n.article_count
+        ? ' Quiet despite ' + plural(n.article_count, 'headline') + ' in the last ' + plural(n.window_days, 'day') + ' &mdash; written about, not traded on.'
+        : ' Nothing much being written and nothing much being traded.';
+      return contextNote('Volume', where + story, true);
+    }
+    if (n && n.article_count) {
+      story = ' <strong>' + plural(n.article_count, 'headline') + '</strong> in the last ' + plural(n.window_days, 'day')
+        + ', tone <strong>' + n.label + '</strong> than usual &mdash; a plausible explanation for the participation, though nothing here establishes that the two are connected.';
+    } else if (n) {
+      story = ' <strong>No headlines found</strong> in the last ' + plural(n.window_days, 'day') + '. Something moved this tape and the news read does not say what.';
+    } else {
+      story = ' No headline read for this ticker, so there is nothing to explain it with.';
+    }
+    return contextNote('Volume', where + story, false);
+  }
+
+  function contextNote(tag, body, muted) {
+    return (
+      '<div class="context-note">' +
+        '<span class="tag">' + tag + '</span>' +
+        '<span class="body' + (muted ? ' muted' : '') + '">' + body + '</span>' +
+        '<span class="unscored">not scored</span>' +
+      '</div>'
+    );
+  }
+
+  function newsNote(n) {
+    if (!n) return contextNote('Headlines', 'No headline read for this ticker in the last run.', true);
+    if (!n.article_count) {
+      return contextNote('Headlines', 'No headlines in the last ' + plural(n.window_days, 'day') + '.', true);
+    }
+    var age = daysSince(n.fetched_at);
+    // Stale sentiment is worse than none: the run leaves the previous row in
+    // place when a fetch fails, so a label can outlive the window it was
+    // read over. Saying how old it is costs a clause and stops that.
+    var read = age === null ? '' : ' Read ' + (age === 0 ? 'today' : plural(age, 'day') + ' ago') + '.';
+    var body = 'Tone <strong>' + newsPhrase(n.label) + '</strong> &mdash; ' + plural(n.article_count, 'headline') +
+      ' in the last ' + plural(n.window_days, 'day') + ', averaging ' + signed(n.avg_compound) +
+      ' against a universe median of +0.34.' + read +
+      ' <span class="muted">Sentiment is read off the language of the headline, so it catches how a story was written, not how material it is.</span>';
+    return contextNote('Headlines', body, false);
+  }
+
+  function earningsNote(t) {
+    if (!t.earnings_date) return contextNote('Earnings', 'No scheduled earnings date &mdash; an ETF, or Yahoo has not published one yet.', true);
+    var d = daysUntil(t.earnings_date);
+    var qualifier = t.earnings_is_estimate
+      ? ' Yahoo still calls this date an <strong>estimate</strong>, so it can move by a week or more.'
+      : ' Confirmed date.';
+    if (d === null) return contextNote('Earnings', t.earnings_date + '.' + qualifier, true);
+    if (d < 0) {
+      // The date is behind us because the nightly has not refreshed this
+      // ticker since it reported -- say that, rather than counting down to
+      // a print that already happened.
+      return contextNote('Earnings', 'Last known date ' + t.earnings_date + ' has passed; the next one has not been published yet.', true);
+    }
+    var when = d === 0 ? '<strong>today</strong>' : (d === 1 ? '<strong>tomorrow</strong>' : 'in <strong>' + plural(d, 'day') + '</strong>');
+    var warn = d <= ER_IMMINENT_DAYS
+      ? ' A swing entry taken now would be held through the print.'
+      : '';
+    return contextNote('Earnings', 'Reports ' + when + ' (' + t.earnings_date + ').' + qualifier + warn, false);
+  }
+
+  function componentHTML(key, label, c) {
+    var pct = c.max ? Math.round((c.points / c.max) * 100) : 0;
+    return (
+      '<div class="component">' +
+        '<div class="head"><span class="name">' + label + '</span><span class="pts mono">' + c.points.toFixed(1) + '/' + c.max + '</span></div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+        '<div class="detail">' + c.detail + '</div>' +
+      '</div>'
+    );
+  }
+
+  var tbody = document.getElementById('tbody');
+  var emptyState = document.getElementById('empty-state');
+
+  function render() {
+    document.querySelectorAll('.chip[data-grade]').forEach(function (btn) {
+      btn.classList.toggle('active', state.grade === btn.dataset.grade);
+    });
+    document.querySelectorAll('thead th[data-sort]').forEach(function (th) {
+      th.classList.toggle('sorted', th.dataset.sort === state.sortKey);
+      th.innerHTML = th.textContent.replace(/\s*[▲▼]$/, '');
+    });
+    var activeTh = document.querySelector('thead th[data-sort="' + state.sortKey + '"]');
+    if (activeTh) activeTh.innerHTML += ' <span class="arrow">' + (state.sortDir === 1 ? '▲' : '▼') + '</span>';
+
+    var filtered = tickers.filter(function (t) {
+      if (state.grade && t.grade !== state.grade) return false;
+      if (state.sector && t.sector !== state.sector) return false;
+      if (state.search && t.ticker.indexOf(state.search) === -1) return false;
+      return true;
+    });
+
+    filtered.sort(function (a, b) {
+      var key = state.sortKey, dir = state.sortDir, av, bv;
+      if (key === 'regime') { av = REGIME_RANK[a.regime]; bv = REGIME_RANK[b.regime]; }
+      else if (key === 'grade') { av = GRADE_RANK[a.grade]; bv = GRADE_RANK[b.grade]; }
+      else if (key === 'ticker') { av = a.ticker; bv = b.ticker; }
+      else { av = a[key]; bv = b[key]; }
+      // Missing performance always sinks, whichever way the column is
+      // sorted -- "no data" is not a good or a bad reading, and letting it
+      // ride to the top on an ascending sort would bury the real losers.
+      var aNull = av === null || av === undefined, bNull = bv === null || bv === undefined;
+      if (aNull || bNull) {
+        if (aNull && bNull) return a.ticker < b.ticker ? -1 : 1;
+        return aNull ? 1 : -1;
+      }
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      return a.ticker < b.ticker ? -1 : 1;
+    });
+
+    tbody.innerHTML = '';
+    emptyState.style.display = filtered.length ? 'none' : 'block';
+
+    filtered.forEach(function (t) {
+      var row = document.createElement('tr');
+      row.className = 'row';
+      row.tabIndex = 0;
+      var isOpen = state.expanded === t.ticker;
+      if (isOpen) row.classList.add('expanded');
+
+      row.innerHTML =
+        '<td><span class="caret">&#9656;</span></td>' +
+        '<td class="ticker-cell"><div class="sym">' + t.ticker + '</div><div class="sub">' + t.sector + earningsChip(t) + newsChip(t.news) + volumeChip(t) + '</div></td>' +
+        '<td><span class="pill ' + t.regime + '">' + t.regime + (t.direction && t.direction !== 'n/a' ? ' <span class="dir">' + directionArrow(t.direction) + '</span>' : '') + '</span></td>' +
+        '<td><span class="grade-cell">' +
+          '<span class="badge ' + t.grade + '">' + t.grade + '</span>' +
+          borderlineChip(t.borderline) +
+          heldChip(t) +
+        '</span></td>' +
+        '<td><span class="score-num mono">' + t.total_points.toFixed(1) + '</span></td>' +
+        '<td>' + perfCell(t.return_1w) + '</td>' +
+        '<td>' + perfCell(t.return_1m) + '</td>';
+
+      row.addEventListener('click', function () {
+        state.expanded = isOpen ? null : t.ticker;
+        render();
+      });
+
+      tbody.appendChild(row);
+
+      var detailRow = document.createElement('tr');
+      detailRow.className = 'detail-row' + (isOpen ? ' open' : '');
+      var comps = t.components;
+      var strat = t.strategy || {};
+      detailRow.innerHTML =
+        '<td colspan="7">' +
+          borderlineNote(t.borderline) +
+          '<div class="group-label">Setup quality &mdash; what the chart says</div>' +
+          '<div class="components-grid">' +
+            componentHTML('trend_structure', 'Trend structure (50/200)', comps.trend_structure) +
+            componentHTML('rsi', 'RSI', comps.rsi) +
+            componentHTML('macd', 'MACD', comps.macd) +
+            componentHTML('volume', 'Volume conviction', comps.volume) +
+          '</div>' +
+          '<div class="group-label">Context</div>' +
+          '<div class="components-grid">' +
+            componentHTML('streak', 'Regime streak', comps.streak) +
+            componentHTML('alignment', 'Daily / weekly', comps.alignment) +
+            componentHTML('sector_industry', 'Sector / industry', comps.sector_industry) +
+            componentHTML('valuation', 'Valuation', comps.valuation) +
+          '</div>' +
+          '<div class="context-note">' +
+            '<span class="tag">How to trade it</span>' +
+            (strat.strategy
+              ? '<span class="body"><strong>' + strat.strategy + '</strong> &mdash; ' + strat.detail + '</span>'
+              : '<span class="body muted">' + (strat.detail || 'no matching strategy yet') + '</span>') +
+            '<span class="unscored">not scored</span>' +
+          '</div>' +
+          volumeNote(t) +
+          newsNote(t.news) +
+          earningsNote(t) +
+        '</td>';
+      tbody.appendChild(detailRow);
+    });
+  }
+
+  render();
+})();
+</script>

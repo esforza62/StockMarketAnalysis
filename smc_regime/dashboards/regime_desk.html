@@ -1,0 +1,652 @@
+<title>Regime Desk</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  :root {
+    --bg: #F3F6F8;
+    --surface: #FFFFFF;
+    --surface-alt: #EAEFF3;
+    --border: #D8E0E7;
+    --text: #16212C;
+    --text-muted: #5B6B7A;
+    --accent: #0E9C8C;
+    --accent-soft: #E1F4F1;
+    --pos: #2F8F5B;
+    --pos-soft: #E5F4EC;
+    --neg: #C23B4B;
+    --neg-soft: #FBE9EB;
+    --choppy: #6B7A8A;
+    --choppy-soft: #EAEDF0;
+    --trending: #2E6FBE;
+    --trending-soft: #E7F0FB;
+    --parabolic: #C9701E;
+    --parabolic-soft: #FBEEDF;
+    --shadow: 0 1px 2px rgba(22,33,44,0.06), 0 8px 24px -12px rgba(22,33,44,0.12);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1620;
+      --surface: #16212D;
+      --surface-alt: #1C2836;
+      --border: #29394A;
+      --text: #E7ECF1;
+      --text-muted: #8A9AAA;
+      --accent: #3FC7B8;
+      --accent-soft: rgba(63,199,184,0.14);
+      --pos: #5CC98A;
+      --pos-soft: rgba(92,201,138,0.14);
+      --neg: #E2707A;
+      --neg-soft: rgba(226,112,122,0.14);
+      --choppy: #97A7B6;
+      --choppy-soft: rgba(151,167,182,0.14);
+      --trending: #5B9FE0;
+      --trending-soft: rgba(91,159,224,0.14);
+      --parabolic: #E2933F;
+      --parabolic-soft: rgba(226,147,63,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0E1620;
+    --surface: #16212D;
+    --surface-alt: #1C2836;
+    --border: #29394A;
+    --text: #E7ECF1;
+    --text-muted: #8A9AAA;
+    --accent: #3FC7B8;
+    --accent-soft: rgba(63,199,184,0.14);
+    --pos: #5CC98A;
+    --pos-soft: rgba(92,201,138,0.14);
+    --neg: #E2707A;
+    --neg-soft: rgba(226,112,122,0.14);
+    --choppy: #97A7B6;
+    --choppy-soft: rgba(151,167,182,0.14);
+    --trending: #5B9FE0;
+    --trending-soft: rgba(91,159,224,0.14);
+    --parabolic: #E2933F;
+    --parabolic-soft: rgba(226,147,63,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---- Header ---- */
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+
+  .titleblock h1 {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 6px;
+  }
+
+  .titleblock p {
+    margin: 0;
+    color: var(--text-muted);
+    max-width: 52ch;
+    font-size: 14px;
+  }
+
+  .meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .meta .row { display: flex; gap: 8px; align-items: baseline; }
+  .meta .row strong { color: var(--text); font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+
+  /* ---- Interval toggle ---- */
+  .toggle {
+    display: inline-flex;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .toggle button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .toggle button:hover { color: var(--text); }
+  .toggle button.active {
+    background: var(--surface);
+    color: var(--accent);
+    box-shadow: var(--shadow);
+  }
+  .toggle button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- Regime lanes ---- */
+  .lane { margin-bottom: 30px; }
+  .lane-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .lane-head h2 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0;
+  }
+  .lane-head .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .lane-head .sub { color: var(--text-muted); font-size: 12.5px; }
+
+  .lane-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* ---- Card ---- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 190px minmax(200px, 1fr) minmax(340px, 1.5fr);
+    grid-template-areas: "head name stats" "expand expand expand";
+    column-gap: 28px;
+    row-gap: 12px;
+    align-items: center;
+  }
+
+  @media (max-width: 860px) {
+    .card {
+      grid-template-columns: 1fr;
+      grid-template-areas: "head" "name" "stats" "expand";
+    }
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 3px 9px;
+    border-radius: 999px;
+    width: fit-content;
+  }
+
+  .card-head {
+    grid-area: head;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .status-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .status-tag.edge { color: var(--pos); background: var(--pos-soft); }
+  .status-tag.noedge { color: var(--neg); background: var(--neg-soft); }
+  .status-tag.insufficient { color: var(--text-muted); background: var(--surface-alt); }
+
+  .strategy-name-wrap { grid-area: name; min-width: 0; }
+  .strategy-name {
+    font-size: 18px;
+    font-weight: 600;
+    line-height: 1.3;
+    text-wrap: balance;
+  }
+  .strategy-name.muted { color: var(--text-muted); font-weight: 500; font-size: 15px; }
+
+  .card-stats {
+    grid-area: stats;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 16px 32px;
+  }
+  .stat-item { display: flex; flex-direction: column; gap: 4px; }
+  .stat-item .figure { font-size: 19px; font-weight: 600; }
+  .stat-item .label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+  .stat-item.winrate { min-width: 76px; }
+
+  .meter-track {
+    height: 6px;
+    width: 76px;
+    border-radius: 999px;
+    background: var(--surface-alt);
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .meter-fill { height: 100%; border-radius: 999px; }
+
+  .rank-toggle-wrap { grid-area: expand; }
+  details { border-top: 1px solid var(--border); padding-top: 10px; }
+  details summary {
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  details summary::-webkit-details-marker { display: none; }
+  details summary::before {
+    content: "▸";
+    font-size: 10px;
+    transition: transform 0.15s ease;
+  }
+  details[open] summary::before { transform: rotate(90deg); }
+  details summary:hover { color: var(--text); }
+  details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .rank-list { margin-top: 10px; display: flex; flex-direction: column; gap: 7px; }
+  .rank-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto auto auto auto;
+    gap: 10px;
+    align-items: center;
+    font-size: 12.5px;
+  }
+  .rank-row .rname { color: var(--text); }
+  .rank-row .rname.thin { color: var(--text-muted); }
+  .rank-row .rval { text-align: right; min-width: 52px; }
+  /* The sized figure is a companion reading, not a replacement: muted and
+     dashed-underlined so it is never mistaken for the headline drawdown a
+     previous run would be compared against. */
+  .sized { color: var(--text-muted); border-bottom: 1px dashed var(--border); }
+  .stat-item .figure.sized { color: var(--text-muted); }
+  .rank-row .thin-tag {
+    font-size: 10px;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0 4px;
+  }
+
+  /* ---- Universe strip ---- */
+  .universe {
+    margin-top: 36px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+  }
+  .universe h2 {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 14px;
+  }
+  .universe-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 28px;
+  }
+  .bar-list { display: flex; flex-direction: column; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 150px 1fr 34px; gap: 10px; align-items: center; font-size: 12.5px; }
+  .bar-row .name { color: var(--text-muted); }
+  .bar-row .track { height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden; }
+  .bar-row .fill { height: 100%; border-radius: 999px; background: var(--accent); }
+  .bar-row .count { text-align: right; color: var(--text-muted); }
+
+  footer {
+    margin-top: 36px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    max-width: 70ch;
+  }
+  footer p { margin: 0 0 6px; }
+
+  @media (max-width: 720px) {
+    .universe-grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; }
+    .meta { align-items: flex-start; }
+    /* Six columns of numbers do not fit a phone. Give the strategy name
+       its own line and let the figures wrap beneath it, rather than
+       letting the row push the page into a horizontal scroll. */
+    .rank-row {
+      grid-template-columns: repeat(3, 1fr);
+      row-gap: 2px;
+      column-gap: 8px;
+    }
+    .rank-row .rname { grid-column: 1 / -1; }
+    .rank-row .rval { text-align: left; min-width: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="titleblock">
+      <h1>Regime Desk</h1>
+      <p>Which strategy has historically performed best in each SMC regime, across the tracking universe. Refreshed on request from the trade-level snapshot store &mdash; not live.</p>
+    </div>
+    <div class="meta">
+      <div class="toggle" role="tablist" aria-label="Interval">
+        <button data-interval="1w" role="tab" aria-selected="false">Weekly</button>
+        <button data-interval="1d" class="active" role="tab" aria-selected="true">Daily</button>
+        <button data-interval="1h" role="tab" aria-selected="false">Hourly</button>
+        <button data-interval="15m" role="tab" aria-selected="false">15-Min</button>
+      </div>
+      <div class="row"><span>snapshot:</span> <strong id="meta-run-at">&mdash;</strong></div>
+      <div class="row"><span>tickers:</span> <strong id="meta-tickers">&mdash;</strong> <span>&middot;</span> <span>trades:</span> <strong id="meta-trades">&mdash;</strong></div>
+    </div>
+  </header>
+
+  <main id="lanes"></main>
+
+  <div class="universe">
+    <h2>Tracking universe</h2>
+    <div class="universe-grid">
+      <div>
+        <div class="bar-list" id="sector-bars"></div>
+      </div>
+      <div>
+        <div class="bar-list" id="exchange-bars"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p><strong style="color:var(--text)">Methodology.</strong> Every trade is tagged with the regime (choppy / trending / parabolic, split up / down / flat) active on its own entry date, not the ticker's current regime. Ranking metric is average return per trade; entries below <span class="mono" id="footer-min-trades">15</span> trades are marked thin and excluded from the headline pick. Long-only, single-position backtest &mdash; no shorting, no pyramiding.</p>
+    <p><strong style="color:var(--text)">The <span class="sized">vol-sized</span> drawdown.</strong> The muted second figure is the <em>same trades</em> at a volatility-targeted stake: each position scaled to <span class="mono">min(1, 20% &divide; trailing 60-bar volatility)</span>, capped so it can only ever shrink a position, never lever one up. Same entries, same exits, same win rate &mdash; only the size of the bet changes, which is why the pair is a like-for-like comparison and not two different backtests. It is shown beside the full-size figure rather than replacing it because only the full-size number is comparable with earlier runs and with the snapshot log. Win rate, average return and worst trade carry no sized twin: a weight cannot move them. The motivation is that this strategy set&rsquo;s drawdown is a <em>stake</em> problem rather than a signal one &mdash; bucketing <code>rsi_dip_recovery</code>&rsquo;s trades by volatility at entry, the loss rate is flat across quintiles and losing trades sit ~420 days in every bucket, but the average loss runs &minus;10.6% on the calmest fifth against &minus;38.1% on the wildest. A blank means the run recorded no sizing, or sizing made no difference to that bucket.</p>
+  </footer>
+</div>
+
+<script id="dashboard-data" type="application/json">
+{
+  "strategy_names": {
+    "rsi": "RSI Mean Reversion",
+    "bollinger": "Bollinger Mean Reversion",
+    "macd": "MACD Crossover",
+    "ema_cross": "EMA 20/50 Cross",
+    "donchian": "Donchian Breakout",
+    "supertrend": "Supertrend",
+    "vwap_trend": "VWAP Trend Structure",
+    "rsi_macd_reversal": "RSI+MACD Reversal",
+    "rsi_macd_trend": "RSI+MACD Trend Continuation",
+    "rsi_macd_filter": "RSI-Filtered MACD",
+    "rsi_dip_recovery": "RSI Dip & Recovery",
+    "rsi_dual_hma": "Dual RSI + Hull MA",
+    "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
+    "vwap_mean_reversion": "VWAP Mean Reversion",
+    "vwap_breakout": "VWAP Breakout",
+    "vwap_pullback": "VWAP Pullback",
+    "vwap_ma_cross": "VWAP-Filtered MA Cross",
+    "vwap_opening_range": "VWAP Opening Range",
+    "vwap_multi_timeframe": "VWAP Multi-Timeframe"
+  },
+  "min_trades": 15,
+  "sectors": [],
+  "exchange_counts": [],
+  "ticker_count_total": 0,
+  "1d": {
+    "run_at": null,
+    "ticker_count": 0,
+    "total_trades": 0,
+    "buckets": []
+  },
+  "1h": {
+    "run_at": null,
+    "ticker_count": 0,
+    "total_trades": 0,
+    "buckets": []
+  },
+  "1w": {
+    "run_at": null,
+    "ticker_count": 0,
+    "total_trades": 0,
+    "buckets": []
+  },
+  "15m": {
+    "run_at": null,
+    "ticker_count": 0,
+    "total_trades": 0,
+    "buckets": []
+  }
+}
+</script>
+<script>
+(function () {
+  const DATA = JSON.parse(document.getElementById("dashboard-data").textContent);
+  const STRATEGY_NAMES = DATA.strategy_names;
+  document.getElementById("footer-min-trades").textContent = DATA.min_trades;
+
+  const REGIME_META = {
+    choppy:    { label: "Choppy",    color: "var(--choppy)",    soft: "var(--choppy-soft)",    sub: "No persistent direction" },
+    trending:  { label: "Trending",  color: "var(--trending)",  soft: "var(--trending-soft)",  sub: "Steady, efficient move" },
+    parabolic: { label: "Parabolic", color: "var(--parabolic)", soft: "var(--parabolic-soft)", sub: "Trending and accelerating" },
+  };
+  const DIR_LABEL = { up: "Up", down: "Down", flat: "Flat", "n/a": "" };
+  const DIR_ARROW = { up: "↑", down: "↓", flat: "→", "n/a": "" };
+
+  function fmtPct(n) {
+    const sign = n > 0 ? "+" : "";
+    return sign + n.toFixed(2) + "%";
+  }
+
+  function fmtDays(n) {
+    return n < 1 ? n.toFixed(2) + "d" : n.toFixed(1) + "d";
+  }
+
+  function fmtRunAt(iso) {
+    if (!iso) return "no data yet";
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+
+  // The sized twin of a drawdown figure. Absent on runs predating position
+  // sizing, and equal to the unsized number when a run recorded full size
+  // everywhere -- in both cases there is nothing to compare, so render
+  // nothing rather than a second copy of the same number.
+  function sizedDD(entry) {
+    const v = entry.max_drawdown_sized_pct;
+    if (v === undefined || v === null) return "";
+    if (Math.abs(v - entry.max_drawdown_pct) < 0.05) return "";
+    return v;
+  }
+
+  function rankRow(entry) {
+    const name = STRATEGY_NAMES[entry.strategy] || entry.strategy;
+    return `
+      <div class="rank-row">
+        <span class="rname ${entry.thin ? "thin" : ""}">${name}${entry.thin ? ' <span class="thin-tag">thin</span>' : ""}</span>
+        <span class="rval mono" style="color:${entry.avg_return_pct >= 0 ? "var(--pos)" : "var(--neg)"}">${fmtPct(entry.avg_return_pct)}</span>
+        <span class="rval mono">${entry.win_rate.toFixed(0)}%</span>
+        <span class="rval mono">${entry.trade_count}</span>
+        <span class="rval mono" style="color:var(--neg)" title="worst peak-to-trough drawdown across tickers trading this strategy in this bucket, at a full position">${fmtPct(entry.max_drawdown_pct)} DD</span>
+        ${sizedDD(entry) === "" ? '<span class="rval"></span>'
+          : `<span class="rval mono sized" title="the same trades at a volatility-targeted stake -- position scaled to min(1, 20% / trailing 60-bar volatility). Same entries, same exits, smaller bet on the wilder names.">${fmtPct(sizedDD(entry))} sized</span>`}
+      </div>`;
+  }
+
+  function card(bucket) {
+    const rm = REGIME_META[bucket.regime];
+    const dirLabel = DIR_LABEL[bucket.direction];
+    const dirArrow = DIR_ARROW[bucket.direction];
+    const best = bucket.best;
+
+    let status, headline, statBlock;
+    if (!best) {
+      status = `<span class="status-tag insufficient">Not enough data</span>`;
+      headline = `<div class="strategy-name muted">No strategy has reached ${DATA.min_trades} trades yet</div>`;
+      statBlock = "";
+    } else {
+      const hasEdge = best.avg_return_pct > 0;
+      status = hasEdge
+        ? `<span class="status-tag edge">Best fit</span>`
+        : `<span class="status-tag noedge">No edge yet</span>`;
+      const name = STRATEGY_NAMES[best.strategy] || best.strategy;
+      headline = `<div class="strategy-name">${name}</div>`;
+      const barColor = hasEdge ? "var(--pos)" : "var(--neg)";
+      statBlock = `
+        <div class="stat-item">
+          <span class="figure mono" style="color:${barColor}">${fmtPct(best.avg_return_pct)}</span>
+          <span class="label">avg / trade</span>
+        </div>
+        <div class="stat-item" title="average time from entry to exit across trades in this bucket">
+          <span class="figure mono">${fmtDays(best.avg_hold_days)}</span>
+          <span class="label">avg hold</span>
+        </div>
+        <div class="stat-item winrate">
+          <span class="figure mono">${best.win_rate.toFixed(0)}%</span>
+          <span class="label">win rate</span>
+          <div class="meter-track"><div class="meter-fill" style="width:${best.win_rate}%;background:${barColor}"></div></div>
+        </div>
+        <div class="stat-item">
+          <span class="figure mono">${best.trade_count}</span>
+          <span class="label">trades</span>
+        </div>
+        <div class="stat-item" title="worst peak-to-trough drawdown across tickers trading this strategy in this bucket, at a full position">
+          <span class="figure mono" style="color:var(--neg)">${fmtPct(best.max_drawdown_pct)}</span>
+          <span class="label">max drawdown</span>
+        </div>
+        ${sizedDD(best) === "" ? "" : `
+        <div class="stat-item" title="the same trades at a volatility-targeted stake -- position scaled to min(1, 20% / trailing 60-bar volatility). Same entries, same exits, smaller bet on the wilder names.">
+          <span class="figure mono sized">${fmtPct(sizedDD(best))}</span>
+          <span class="label">&hellip; vol-sized</span>
+        </div>`}
+        <div class="stat-item">
+          <span class="figure mono">${best.loss_rate_pct.toFixed(0)}%</span>
+          <span class="label">lose &middot; avg ${fmtPct(best.avg_loss_pct)}</span>
+        </div>`;
+    }
+
+    const others = bucket.all.filter((e) => !best || e.strategy !== best.strategy);
+    const rankList = others.length
+      ? `<div class="rank-toggle-wrap"><details><summary>${others.length} more strategies in this bucket</summary><div class="rank-list">${others.map(rankRow).join("")}</div></details></div>`
+      : "";
+
+    return `
+      <div class="card">
+        <div class="card-head">
+          <span class="pill" style="color:${rm.color};background:${rm.soft}">${rm.label}${dirLabel ? " " + dirArrow + " " + dirLabel : ""}</span>
+          ${status}
+        </div>
+        <div class="strategy-name-wrap">${headline}</div>
+        <div class="card-stats">${statBlock}</div>
+        ${rankList}
+      </div>`;
+  }
+
+  function render(interval) {
+    const d = DATA[interval];
+    document.getElementById("meta-run-at").textContent = fmtRunAt(d.run_at);
+    document.getElementById("meta-tickers").textContent = d.ticker_count;
+    document.getElementById("meta-trades").textContent = d.total_trades.toLocaleString();
+
+    const order = ["choppy", "trending", "parabolic"];
+    const lanes = order.map((regime) => {
+      const buckets = d.buckets.filter((b) => b.regime === regime);
+      const rm = REGIME_META[regime];
+      return `
+        <section class="lane">
+          <div class="lane-head">
+            <span class="dot" style="background:${rm.color}"></span>
+            <h2>${rm.label}</h2>
+            <span class="sub">${rm.sub}</span>
+          </div>
+          <div class="lane-grid">${buckets.map(card).join("")}</div>
+        </section>`;
+    });
+    document.getElementById("lanes").innerHTML = lanes.join("");
+  }
+
+  function renderUniverse() {
+    const maxSector = Math.max(...DATA.sectors.map((s) => s.count));
+    document.getElementById("sector-bars").innerHTML = DATA.sectors
+      .map(
+        (s) => `
+        <div class="bar-row">
+          <span class="name">${s.sector}</span>
+          <span class="track"><span class="fill" style="width:${(s.count / maxSector) * 100}%"></span></span>
+          <span class="count mono">${s.count}</span>
+        </div>`
+      )
+      .join("");
+
+    const maxEx = Math.max(...DATA.exchange_counts.map((e) => e.count));
+    document.getElementById("exchange-bars").innerHTML = DATA.exchange_counts
+      .map(
+        (e) => `
+        <div class="bar-row" style="grid-template-columns: 80px 1fr 34px;">
+          <span class="name">${e.exchange}</span>
+          <span class="track"><span class="fill" style="width:${(e.count / maxEx) * 100}%"></span></span>
+          <span class="count mono">${e.count}</span>
+        </div>`
+      )
+      .join("");
+  }
+
+  document.querySelectorAll(".toggle button").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".toggle button").forEach((b) => {
+        b.classList.remove("active");
+        b.setAttribute("aria-selected", "false");
+      });
+      btn.classList.add("active");
+      btn.setAttribute("aria-selected", "true");
+      render(btn.dataset.interval);
+    });
+  });
+
+  render("1d");
+  renderUniverse();
+})();
+</script>

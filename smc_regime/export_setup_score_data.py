@@ -202,7 +202,7 @@ def _macro_payload(conn) -> dict:
     from . import macro as macro_module
 
     rows = conn.execute(
-        "SELECT symbol, label, unit, price, change_pct, fetched_at FROM macro_levels"
+        "SELECT symbol, label, unit, price, change_pct, fetched_at, session_date FROM macro_levels"
     ).fetchall()
     by_symbol = {r[0]: r for r in rows}
     # Config order, not insertion order: the page reads slowest-moving first.
@@ -229,10 +229,25 @@ def _macro_payload(conn) -> dict:
         levels.append({
             "symbol": row[0], "label": row[1], "unit": row[2],
             "price": row[3], "change_pct": row[4], "fetched_at": row[5],
+            "session_date": row[6],
         })
+    # The session the STRIP as a whole is about: whichever session most of
+    # it is in. After the 18:00 futures reopen crude and gold move on to
+    # tomorrow while the cash indices stay on the session that just closed,
+    # and the majority is what a reader means by "today". Levels off that
+    # session get labelled individually on the page rather than silently
+    # sitting in a column of numbers that all look like the same day.
+    dates = [l["session_date"] for l in levels if l["session_date"]]
+    primary = Counter(dates).most_common(1)[0][0] if dates else None
+    for level in levels:
+        level["off_session"] = bool(
+            level["session_date"] and primary and level["session_date"] != primary
+        )
+
     calendar = macro_module.load_calendar()
     return {
         "levels": levels,
+        "session_date": primary,
         "as_of": max((l["fetched_at"] for l in levels), default=None),
         "events": macro_module.upcoming(calendar),
         "covers_through": calendar.get("covers_through"),

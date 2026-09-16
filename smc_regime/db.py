@@ -58,7 +58,8 @@ CREATE TABLE IF NOT EXISTS macro_levels (
     unit TEXT,
     price REAL,
     change_pct REAL,
-    fetched_at TEXT
+    fetched_at TEXT,
+    session_date TEXT
 );
 
 CREATE TABLE IF NOT EXISTS ticker_metadata (
@@ -144,6 +145,11 @@ _ADDED_COLUMNS = {
     # written before sizing existed, which every reader treats as 1.0 --
     # a full position, the behaviour those rows actually had.
     "trades": {"size": "REAL"},
+    # Trading session the reading belongs to. A future quoted after the
+    # 18:00 reopen is on the NEXT session while the cash indices beside it
+    # still show the one that just closed, and the page says so. NULL on
+    # rows written before this existed: unknown, not "same session".
+    "macro_levels": {"session_date": "TEXT"},
 }
 
 
@@ -252,15 +258,16 @@ def upsert_macro_levels(conn: sqlite3.Connection, levels: list[dict], fetched_at
     if not levels:
         return
     conn.executemany(
-        """INSERT INTO macro_levels (symbol, label, unit, price, change_pct, fetched_at)
-           VALUES (:symbol, :label, :unit, :price, :change_pct, :fetched_at)
+        """INSERT INTO macro_levels (symbol, label, unit, price, change_pct, fetched_at, session_date)
+           VALUES (:symbol, :label, :unit, :price, :change_pct, :fetched_at, :session_date)
            ON CONFLICT(symbol) DO UPDATE SET
                label = excluded.label,
                unit = excluded.unit,
                price = excluded.price,
                change_pct = excluded.change_pct,
-               fetched_at = excluded.fetched_at""",
-        [{**row, "fetched_at": fetched_at} for row in levels],
+               fetched_at = excluded.fetched_at,
+               session_date = excluded.session_date""",
+        [{"session_date": None, **row, "fetched_at": fetched_at} for row in levels],
     )
     conn.commit()
 

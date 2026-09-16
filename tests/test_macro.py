@@ -10,6 +10,7 @@ so they are what these checks are about.
 import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -299,6 +300,75 @@ for bad in ("n/a", float("nan"), None):
         junk is not None and junk["change_pct"] is not None
         and abs(junk["change_pct"] - 10.0) < 1e-9,
     )
+
+# --- Which session a reading belongs to ------------------------------------
+#
+# CME futures reopen at 18:00 exchange-local, so from 6pm ET crude is
+# trading TOMORROW while the cash indices beside it still show the session
+# that just closed. On 2026-09-15 that had WTI reading -0.49% on an
+# afternoon it settled up about 4%.
+
+def futures_chart(bars, price, market_hour, tz="America/New_York"):
+    payload = fake_chart(bars, price, tz=tz)
+    meta = payload["chart"]["result"][0]["meta"]
+    meta["instrumentType"] = "FUTURE"
+    meta["regularMarketTime"] = int(
+        datetime(2026, 9, 15, market_hour, tzinfo=ZoneInfo(tz)).timestamp())
+    return payload
+
+
+bars_two = [(epoch(2026, 9, 14), 101.39), (epoch(2026, 9, 15), 105.39)]
+
+try:
+    macro.requests = with_response(futures_chart(bars_two, 105.39, market_hour=20))
+    evening = macro.fetch_level("CL=F")
+finally:
+    macro.requests = real_requests
+
+check(
+    "23. a future after the evening reopen is on the NEXT session",
+    evening["session_date"] == "2026-09-16",
+)
+
+try:
+    macro.requests = with_response(futures_chart(bars_two, 105.39, market_hour=14))
+    afternoon = macro.fetch_level("CL=F")
+finally:
+    macro.requests = real_requests
+
+check(
+    "24. the same future mid-afternoon is still on today's session",
+    afternoon["session_date"] == "2026-09-15",
+)
+
+# Friday evening reopens into Monday, not Saturday.
+try:
+    fri = fake_chart(bars_two, 105.39)
+    meta = fri["chart"]["result"][0]["meta"]
+    meta["instrumentType"] = "FUTURE"
+    meta["regularMarketTime"] = int(
+        datetime(2026, 9, 18, 20, tzinfo=ZoneInfo("America/New_York")).timestamp())
+    macro.requests = with_response(fri)
+    friday = macro.fetch_level("CL=F")
+finally:
+    macro.requests = real_requests
+
+check(
+    "25. a Friday-evening reopen belongs to Monday, not the weekend",
+    friday["session_date"] == "2026-09-21",
+)
+
+# A cash index takes its session from the bar, whatever the hour.
+try:
+    macro.requests = with_response(fake_chart(bars_two, 105.39))
+    index = macro.fetch_level("^GSPC")
+finally:
+    macro.requests = real_requests
+
+check(
+    "26. an index takes its session from its latest bar",
+    index["session_date"] == "2026-09-15",
+)
 
 print()
 if failures:

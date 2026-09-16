@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
@@ -157,9 +157,46 @@ def fetch_level(symbol: str) -> dict | None:
             # Whether this instrument has traded today in its own timezone,
             # which is what decides cash-versus-future below.
             "traded_today": bool(bars and datetime.fromtimestamp(bars[-1][0], zone).date() >= today),
+            # Which trading session the price and change above belong to.
+            # Compared against the rest of the strip downstream, so a
+            # future trading tomorrow's session can be labelled as such.
+            "session_date": (
+                lambda d: d.isoformat() if d else None
+            )(_session_date(meta, zone, bars)),
         }
     except Exception:
         return None
+
+
+# CME Globex reopens at 18:00 exchange-local, and everything on this strip
+# that is a future (crude, Brent, gold, the equity futures) is on that
+# schedule. After the reopen a future's "today" is the NEXT trading date,
+# while the cash indices beside it are still showing the session that just
+# closed.
+_FUTURES_REOPEN_HOUR = 18
+
+
+def _session_date(meta: dict, zone, bars: list) -> "date | None":
+    """The trading date the current quote belongs to.
+
+    For a future after the evening reopen this is tomorrow, not today: at
+    8pm ET crude is trading the next session, so its change is measured
+    against a settlement the cash market has not reached yet. The strip
+    needs to say which session each number is from, or WTI reads -0.4% on
+    an afternoon it settled up 4%.
+    """
+    stamp = meta.get("regularMarketTime")
+    if meta.get("instrumentType") == "FUTURE" and stamp:
+        local = datetime.fromtimestamp(stamp, zone)
+        if local.hour >= _FUTURES_REOPEN_HOUR:
+            nxt = local.date() + timedelta(days=1)
+            while nxt.weekday() >= 5:  # Sunday reopen belongs to Monday
+                nxt += timedelta(days=1)
+            return nxt
+        return local.date()
+    if bars:
+        return datetime.fromtimestamp(bars[-1][0], zone).date()
+    return None
 
 
 def _zone(name: str | None):

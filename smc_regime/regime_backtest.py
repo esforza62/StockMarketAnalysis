@@ -200,8 +200,18 @@ def _compounded_return_pct(group: pd.DataFrame, sized: bool = True) -> float:
     ticker trading this strategy in this regime -- still a simplification,
     but not a nonsensical one.
     """
+    # An EMPTY group is reachable now that summarize_by_regime computes the
+    # realised figures over closed trades only: a strategy whose every
+    # trade in a bucket is still open leaves nothing here. groupby.apply on
+    # an empty frame returns an empty DataFrame rather than a Series, so
+    # .mean() reduces across the string columns too -- which surfaced as
+    # "Object of type Series is not JSON serializable" when the nightly
+    # wrote its log record, an hour and a half into the run and nowhere
+    # near the actual cause.
+    if group.empty:
+        return float("nan")
     per_ticker = group.groupby("ticker").apply(_ticker_compounded_return_pct, sized=sized)
-    return per_ticker.mean()
+    return float(per_ticker.mean())
 
 
 def _ticker_max_drawdown_pct(trades: pd.DataFrame, sized: bool = True) -> float:
@@ -223,8 +233,10 @@ def _max_drawdown_pct(group: pd.DataFrame, sized: bool = True) -> float:
     exactly the risk it exists to surface (a strategy where most tickers
     drew down 10% but one drew down 90% is not well-described by "50%
     average drawdown")."""
+    if group.empty:
+        return float("nan")
     per_ticker = group.groupby("ticker").apply(_ticker_max_drawdown_pct, sized=sized)
-    return per_ticker.min()
+    return float(per_ticker.min())
 
 
 def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
@@ -267,11 +279,17 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
                 "avg_return_pct": returns.mean() if len(returns) else float("nan"),
                 "avg_hold_days": hold_days.mean(),
                 "total_return_pct": returns.sum(),
-                "compounded_return_pct": _compounded_return_pct(group, sized=False),
+                # `closed`, not `group`, and this matters: the sized twin
+                # below is computed on `closed` too, and the whole claim of
+                # that pair is that it is the SAME trades at a different
+                # stake. Feeding one side the open positions and the other
+                # side not would make the comparison meaningless while
+                # still printing two plausible numbers.
+                "compounded_return_pct": _compounded_return_pct(closed, sized=False),
                 "worst_trade_pct": returns.min(),
                 "loss_rate_pct": (returns < 0).mean() * 100,
                 "avg_loss_pct": losers.mean() if not losers.empty else 0.0,
-                "max_drawdown_pct": _max_drawdown_pct(group, sized=False),
+                "max_drawdown_pct": _max_drawdown_pct(closed, sized=False),
                 # The same trades at a volatility-targeted stake. Only the
                 # equity-curve figures get a sized twin: win rate, average
                 # return and worst trade are properties of the trades

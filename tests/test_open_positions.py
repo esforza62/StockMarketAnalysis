@@ -11,6 +11,7 @@ These checks pin the fix and, just as importantly, pin that CLOSED trades
 did not move: the change has to be purely additive or every stored figure
 and every published table silently changes meaning.
 """
+import json
 import sqlite3
 import sys
 from pathlib import Path
@@ -129,6 +130,69 @@ cols = {r[1] for r in migrated.execute("PRAGMA table_info(trades)")}
 legacy_value = migrated.execute("SELECT is_open FROM trades").fetchone()[0]
 check("13. a legacy database is migrated, with old rows left NULL",
       "is_open" in cols and legacy_value is None)
+
+# ---- the empty-group path that took down run #34 -------------------------
+#
+# Computing the realised figures over closed trades only made an EMPTY
+# group reachable: a strategy whose every trade in a bucket is still open
+# leaves nothing behind. groupby.apply on an empty frame returns a
+# DataFrame rather than a Series, so the equity-curve helpers reduced
+# across the string columns too. That surfaced an hour and a half into the
+# nightly as "Object of type Series is not JSON serializable", nowhere
+# near its cause.
+all_open = pd.DataFrame([
+    {"ticker": "T", "strategy": "allopen", "regime": "trending", "direction": "down",
+     "entry_date": pd.Timestamp("2024-07-01"), "exit_date": pd.Timestamp("2024-12-01"),
+     "return_pct": -30.0, "win": False, "size": 1.0, "is_open": True},
+])
+row = summarize_by_regime(all_open).iloc[0]
+
+check("14. a bucket with no closed trades summarises instead of raising",
+      row["trade_count"] == 0 and row["open_trade_count"] == 1)
+
+check("15. its realised figures are unknown, not zero",
+      pd.isna(row["avg_return_pct"]) and pd.isna(row["compounded_return_pct"]))
+
+check("16. its unbiased figure still reports the open position",
+      abs(row["avg_return_all_pct"] - (-30.0)) < 1e-9)
+
+check("17. no field comes back as a Series",
+      not any(isinstance(v, pd.Series) for v in row.to_dict().values()))
+
+# ---- and that the unknown survives serialisation as null -----------------
+#
+# json.dumps writes NaN as the bare token NaN. Python reads it back, but
+# JavaScript's JSON.parse rejects it, so one NaN does not degrade a
+# dashboard -- it throws on load and the page renders nothing.
+from smc_regime import jsonfmt
+
+payload = jsonfmt.dumps({"rows": [{"a": float("nan"), "b": float("inf"),
+                                   "c": float("-inf"), "ok": 1.5}]}, compact_depth=5)
+check("18. non-finite floats serialise as null, not NaN/Infinity",
+      "NaN" not in payload and "Infinity" not in payload and "null" in payload)
+
+
+def strict(text):
+    """json.loads accepts NaN by default; this refuses it, like a browser."""
+    return json.loads(text, parse_constant=lambda c: (_ for _ in ()).throw(ValueError(c)))
+
+
+try:
+    strict(payload)
+    parsed = True
+except ValueError:
+    parsed = False
+check("19. the payload parses under strict JSON rules", parsed)
+
+check("20. finite values are left alone", '"ok":1.5' in payload.replace(" ", ""))
+
+record = {"summary": summarize_by_regime(all_open).round(4).to_dict(orient="records")}
+try:
+    strict(json.dumps(jsonfmt.finite(record)))
+    log_ok = True
+except (ValueError, TypeError):
+    log_ok = False
+check("21. the snapshot log record serialises under strict JSON", log_ok)
 
 print()
 if failures:

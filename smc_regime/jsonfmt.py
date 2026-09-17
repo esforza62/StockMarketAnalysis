@@ -20,9 +20,34 @@ or one strategy's stats -- to a single greppable line.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 _COMPACT_SEPARATORS = (",", ":")
+
+
+def finite(obj: Any) -> Any:
+    """Replace NaN and +/-Infinity with null, recursively.
+
+    json.dumps emits these as the bare tokens NaN, Infinity and -Infinity,
+    which Python reads back happily and JavaScript's JSON.parse rejects
+    outright -- so a single NaN anywhere in a payload does not degrade the
+    page, it throws on load and the dashboard renders nothing.
+
+    NaN became reachable when summarize_by_regime started computing its
+    realised figures over closed trades only: a strategy whose every trade
+    in a bucket is still open has no realised mean. null is the right wire
+    form for that -- the pages already treat null as "unknown" and print a
+    dash -- and it is a different claim from 0.0, which would read as a
+    strategy that broke even.
+    """
+    if isinstance(obj, float) and not math.isfinite(obj):
+        return None
+    if isinstance(obj, dict):
+        return {k: finite(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [finite(v) for v in obj]
+    return obj
 
 
 def dumps(obj: Any, compact_depth: int, indent: int = 2) -> str:
@@ -33,7 +58,7 @@ def dumps(obj: Any, compact_depth: int, indent: int = 2) -> str:
     values are depth 1, and so on. `compact_depth=2` on {"tickers": [ {...} ]}
     therefore puts each ticker dict on its own line.
     """
-    return _render(obj, compact_depth, indent, level=0)
+    return _render(finite(obj), compact_depth, indent, level=0)
 
 
 def _render(obj: Any, compact_depth: int, indent: int, level: int) -> str:

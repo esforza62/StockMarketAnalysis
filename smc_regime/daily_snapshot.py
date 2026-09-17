@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import db as db_module
+from . import jsonfmt
 from .regime_backtest import collect_trades, summarize_by_regime
 
 # 15m's rolling window is intentionally short relative to 1d/1h/1w's full
@@ -136,7 +137,12 @@ def main() -> None:
         for interval in intervals:
             start_date = None if interval in rolling_intervals else args.start_date
             record = run_snapshot(tickers, interval, conn=conn, start_date=start_date, confirm_bars=args.confirm_bars)
-            f.write(json.dumps(record) + "\n")
+            # Sanitised for the same reason the dashboard payloads are: a
+            # strategy whose every trade in a bucket is still open has no
+            # realised mean, and json.dumps would write that as the bare
+            # token NaN. Python reads it back, but it is not valid JSON and
+            # anything else reading this log would choke on it.
+            f.write(json.dumps(jsonfmt.finite(record)) + "\n")
             print(f"{interval}: {record['total_trades']} trades across {record['tickers_with_trades']}/{record['ticker_count']} tickers")
 
     conn.close()

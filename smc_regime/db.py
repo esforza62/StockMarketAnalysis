@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS trades (
     exit_date INTEGER NOT NULL,
     return_pct REAL NOT NULL,
     win INTEGER NOT NULL,
-    size REAL
+    size REAL,
+    is_open INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_trades_lookup
@@ -144,7 +145,15 @@ _ADDED_COLUMNS = {
     # Fraction of a full position the trade was sized at. NULL on rows
     # written before sizing existed, which every reader treats as 1.0 --
     # a full position, the behaviour those rows actually had.
-    "trades": {"size": "REAL"},
+    "trades": {
+        "size": "REAL",
+        # 1 when the trade was still open at the last bar and marked to
+        # market there. NULL on rows written before this existed, where
+        # open positions were dropped entirely rather than recorded --
+        # so NULL means "this run recorded closed trades only", which is
+        # a different claim from 0.
+        "is_open": "INTEGER",
+    },
     # Trading session the reading belongs to. A future quoted after the
     # 18:00 reopen is on the NEXT session while the cash indices beside it
     # still show the one that just closed, and the page says so. NULL on
@@ -234,8 +243,11 @@ def write_trades(conn: sqlite3.Connection, run_at: str, interval: str, trades: p
     rows["win"] = rows["win"].astype(int)
     if "size" not in rows:
         rows["size"] = 1.0
+    # 0, not NULL, when the caller does not supply it: this writer records
+    # open positions, so an unflagged row from it really is a closed trade.
+    rows["is_open"] = rows["is_open"].astype(int) if "is_open" in rows else 0
 
-    cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win", "size"]
+    cols = ["run_id", "ticker", "strategy_id", "regime", "direction", "entry_date", "exit_date", "return_pct", "win", "size", "is_open"]
     conn.executemany(
         f"INSERT INTO trades ({', '.join(cols)}) VALUES ({', '.join(['?'] * len(cols))})",
         rows[cols].itertuples(index=False, name=None),

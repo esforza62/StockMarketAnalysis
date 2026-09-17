@@ -42,6 +42,11 @@ class Trade:
     # Fraction of a full position held, fixed at entry. 1.0 is the
     # unweighted behaviour every existing caller gets by default.
     size: float = 1.0
+    # True when the position was still open at the last bar and has been
+    # marked to market there rather than closed by the strategy's own
+    # rule. Defaults False, so every trade built the old way is a real
+    # exit and nothing that reads Trade today changes meaning.
+    is_open: bool = False
 
     @property
     def return_pct(self) -> float:
@@ -211,6 +216,32 @@ def run_backtest(
         elif in_position and row["exit"]:
             trades.append(Trade(entry_date, date, entry_price, close, size))
             in_position = False
+
+    # MARK THE SURVIVOR TO MARKET instead of dropping it.
+    #
+    # This loop used to end here with the position still open, and that
+    # trade was never appended -- so `trades` held closed trades only and
+    # every strategy was missing its recent entries in proportion to how
+    # long it holds. On the 1d run the final hold-window was missing ~72%
+    # of rsi_dip_recovery's expected entries and ~88% of
+    # rsi_dip_trend_filter's, against ~0% for the 5-12 day strategies.
+    #
+    # The bias is not just incompleteness, it has a direction. A
+    # dip-and-recovery position closes when it recovers, so the ones that
+    # close are the winners and the ones still open are losers in
+    # progress. Dropping them inflates both the win rate and the average
+    # return, and it does so hardest for exactly the strategies that top
+    # the regime desk.
+    #
+    # The trade is recorded at the last bar's close and flagged is_open,
+    # so a reader can have the unbiased set, the realised-only set, or
+    # both. Nothing about a CLOSED trade changes: this appends after the
+    # loop and touches no existing branch.
+    if in_position:
+        last_date = signals.index[-1]
+        trades.append(
+            Trade(entry_date, last_date, entry_price, df.loc[last_date, "Close"], size, is_open=True)
+        )
 
     return trades
 

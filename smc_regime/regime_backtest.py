@@ -135,6 +135,12 @@ def collect_trades(
                         # drawdown) can weight by it while the reported
                         # per-trade return stays the asset's own move.
                         "size": trade.size,
+                        # True when the position was still open at the last
+                        # bar and marked to market there. Recorded rather
+                        # than dropped: see backtest.run_backtest -- the
+                        # drop was biased toward the strategies that hold
+                        # longest, which are the ones topping the desk.
+                        "is_open": trade.is_open,
                     }
                 )
 
@@ -232,14 +238,33 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
     """
 
     def _agg(group: pd.DataFrame) -> pd.Series:
-        returns = group["return_pct"]
+        # EVERY EXISTING FIGURE IS REALISED-ONLY, deliberately.
+        #
+        # run_backtest now records the position left open at the last bar
+        # instead of dropping it, which is a bug fix -- the drop was
+        # biased toward long-hold strategies and, within them, toward
+        # their winners. But quietly folding marked-to-market positions
+        # into `avg_return_pct` would change what every stored figure and
+        # every published table means, so the realised numbers keep their
+        # definition and the unbiased ones arrive beside them, the same
+        # way the vol-sized drawdown did.
+        #
+        # Read the pair, not either half: a large gap between
+        # avg_return_pct and avg_return_all_pct is the size of the old
+        # bias for that strategy.
+        if "is_open" in group:
+            closed = group[~group["is_open"].fillna(False).astype(bool)]
+        else:
+            closed = group
+        all_returns = group["return_pct"]
+        returns = closed["return_pct"]
         losers = returns[returns < 0]
-        hold_days = (group["exit_date"] - group["entry_date"]).dt.total_seconds() / 86400
+        hold_days = (closed["exit_date"] - closed["entry_date"]).dt.total_seconds() / 86400
         return pd.Series(
             {
-                "trade_count": len(group),
-                "win_rate": (returns > 0).mean() * 100,
-                "avg_return_pct": returns.mean(),
+                "trade_count": len(closed),
+                "win_rate": (returns > 0).mean() * 100 if len(returns) else float("nan"),
+                "avg_return_pct": returns.mean() if len(returns) else float("nan"),
                 "avg_hold_days": hold_days.mean(),
                 "total_return_pct": returns.sum(),
                 "compounded_return_pct": _compounded_return_pct(group, sized=False),
@@ -252,11 +277,19 @@ def summarize_by_regime(trades: pd.DataFrame) -> pd.DataFrame:
                 # return and worst trade are properties of the trades
                 # themselves and a weight cannot move them, which is the
                 # whole reason sizing is comparable in the first place.
-                "compounded_return_sized_pct": _compounded_return_pct(group, sized=True),
-                "max_drawdown_sized_pct": _max_drawdown_pct(group, sized=True),
+                "compounded_return_sized_pct": _compounded_return_pct(closed, sized=True),
+                "max_drawdown_sized_pct": _max_drawdown_pct(closed, sized=True),
+                # Positions still open at the last bar, marked to market
+                # there. These were previously not recorded at all.
+                "open_trade_count": int(len(group) - len(closed)),
+                # The unbiased readings: every trade the strategy actually
+                # took, whether or not it has exited yet.
+                "avg_return_all_pct": all_returns.mean() if len(all_returns) else float("nan"),
+                "win_rate_all": (all_returns > 0).mean() * 100 if len(all_returns) else float("nan"),
             }
         )
 
     summary = trades.groupby(["regime", "direction", "strategy"]).apply(_agg)
     summary["trade_count"] = summary["trade_count"].astype(int)
+    summary["open_trade_count"] = summary["open_trade_count"].astype(int)
     return summary.reset_index().sort_values(["regime", "direction", "avg_return_pct"], ascending=[True, True, False])

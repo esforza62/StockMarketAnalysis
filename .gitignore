@@ -16,3 +16,9 @@ backtest_logs/smc_regime.db
 # python -m smc_regime.build_dashboard <name> --out <file>.
 /setup_grades.html
 /regime_desk.html
+
+# Vendor bars cached from the TradingView MCP for local strategy iteration.
+# Not a data source -- see smc_regime/tv_bars.py. Different vendor from the
+# nightly's Tiingo feed, so these must never be committed or compared with
+# anything on the desk.
+/backtest_logs/tv_bars/

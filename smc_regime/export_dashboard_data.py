@@ -25,6 +25,8 @@ STRATEGY_NAMES = {
     "rsi_dip_recovery": "RSI Dip & Recovery",
     "rsi_dual_hma": "Dual RSI + Hull MA",
     "rsi_dip_trend_filter": "RSI Dip & Recovery (Trend-Filtered)",
+    "swing_failure": "Swing Failure",
+    "swing_failure_delayed": "Swing Failure (Delayed Reclaim)",
     "vwap_mean_reversion": "VWAP Mean Reversion",
     "vwap_breakout": "VWAP Breakout",
     "vwap_pullback": "VWAP Pullback",

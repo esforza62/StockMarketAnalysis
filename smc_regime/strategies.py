@@ -375,6 +375,121 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def _swing_failure(
+    df: pd.DataFrame,
+    pivot_left: int,
+    pivot_right: int,
+    reclaim_bars: int,
+    stop_buffer_pct: float,
+    target: str,
+) -> pd.DataFrame:
+    """Shared body of the swing-failure variants.
+
+    THE PATTERN. Price trades below a confirmed swing low -- taking out the
+    sell stops resting under it -- and then closes back above that level.
+    The break failed: the move below was liquidity being taken, not a
+    breakdown, and the reclaim is the entry.
+
+    LONG SIDE ONLY. The mirror image (sweep a swing high, close back below,
+    short) is the other half of this pattern and is not expressible here:
+    the engine is long-only, the same constraint that cost rsi_dip_recovery
+    its short side. What the desk measures is therefore HALF this strategy,
+    and a bullish half at that -- worth remembering before reading its
+    numbers as the strategy's.
+
+    THIS IS THE ONLY STRATEGY THAT CARRIES A STOP. It emits a `stop_pct`
+    column, which backtest_strategy wires into run_backtest's
+    stop_loss_pct_series, placing the stop under the swept low rather than
+    at a fixed distance. That is how the setup is actually traded -- the
+    invalidation is structural, "price went back below the level it was
+    supposed to have reclaimed" -- but it does mean this strategy is not
+    measured on the same basis as the other nineteen, which all run
+    stopless. A lower drawdown here is partly the stop, not only the
+    signal.
+
+    `reclaim_bars` is what separates the two registered variants: 0 demands
+    the sweep and the reclaim on one bar (the classic SFP candle), higher
+    values let the reclaim develop over the next few bars.
+    """
+    swing_low = ind.swing_low(df, pivot_left, pivot_right)
+    swing_high = ind.swing_high(df, pivot_left, pivot_right)
+    low, close = df["Low"], df["Close"]
+
+    swept = ((low < swing_low) & swing_low.notna()).fillna(False).astype(bool)
+
+    # Group every bar with the sweep it belongs to. Dedupe has to be
+    # relative to THAT sweep, not to whether price is above the level:
+    # price sits above a swing low most of the time by construction, so
+    # "the first bar that is back above" fires once and then never again.
+    sweep_id = swept.cumsum()
+    position = pd.Series(range(len(df)), index=df.index)
+    bars_since_sweep = position - position.where(swept).ffill()
+
+    reclaimed = (close > swing_low) & swing_low.notna()
+    eligible = (
+        (sweep_id > 0)                      # a sweep has actually happened
+        & (bars_since_sweep <= reclaim_bars)  # and recently enough
+        & reclaimed
+    ).fillna(False).astype(bool)
+
+    # One entry per sweep: the first bar that reclaims it.
+    entry = eligible & (eligible.groupby(sweep_id).cumsum() == 1)
+
+    # Invalidation sits under the LOWEST low reached since the sweep began,
+    # not under the sweep bar alone -- on the delayed variant price often
+    # probes lower while it is still below the level, and a stop above that
+    # probe would already have been hit before the entry existed.
+    sweep_low = low.groupby(sweep_id).cummin()
+
+    stop_level = sweep_low * (1 - stop_buffer_pct / 100)
+    stop_pct = ((close - stop_level) / close * 100).where(entry)
+
+    if target == "swing_high":
+        # The liquidity on the other side. Filled at the close of the bar
+        # that reaches it, not at the level itself -- the engine exits on
+        # signal at the close, which is the conservative reading.
+        exit_ = (df["High"] >= swing_high) & swing_high.notna()
+    else:
+        raise ValueError(f"unknown target {target!r}")
+
+    return pd.DataFrame({
+        "entry": entry.fillna(False),
+        "exit": exit_.fillna(False),
+        "stop_pct": stop_pct,
+    })
+
+
+def swing_failure(
+    df: pd.DataFrame,
+    pivot_left: int = 3,
+    pivot_right: int = 3,
+    stop_buffer_pct: float = 0.25,
+) -> pd.DataFrame:
+    """Classic swing-failure candle: one bar wicks below a confirmed swing
+    low and closes back above it. Strictest reading, fewest signals."""
+    return _swing_failure(df, pivot_left, pivot_right, reclaim_bars=0,
+                          stop_buffer_pct=stop_buffer_pct, target="swing_high")
+
+
+def swing_failure_delayed(
+    df: pd.DataFrame,
+    pivot_left: int = 3,
+    pivot_right: int = 3,
+    reclaim_bars: int = 3,
+    stop_buffer_pct: float = 0.25,
+) -> pd.DataFrame:
+    """swing_failure with the reclaim allowed to develop over the next few
+    bars rather than completing on the sweep bar itself.
+
+    Registered as its own strategy rather than as a parameter so the
+    regime-conditioned backtest can answer which reading works where --
+    the same reason rsi_dip_recovery and its trend-filtered twin are
+    separate entries.
+    """
+    return _swing_failure(df, pivot_left, pivot_right, reclaim_bars=reclaim_bars,
+                          stop_buffer_pct=stop_buffer_pct, target="swing_high")
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -395,4 +510,6 @@ STRATEGIES = {
     "rsi_dip_recovery": rsi_dip_recovery,
     "rsi_dip_trend_filter": rsi_dip_recovery_trend_filter,
     "rsi_dual_hma": rsi_dual_hma_trend,
+    "swing_failure": swing_failure,
+    "swing_failure_delayed": swing_failure_delayed,
 }

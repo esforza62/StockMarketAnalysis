@@ -264,6 +264,22 @@ def backtest_strategy(
     if target_vol_pct is not None:
         size_series = vol_target_sizes(df, target_vol_pct, interval=interval)
     signals = STRATEGIES[strategy](df)
+    # A strategy may carry its own per-trade invalidation. swing_failure
+    # puts the stop under the swept low, because that is where the setup is
+    # actually wrong -- a fixed percentage would be an arbitrary distance
+    # from a structural level. Only strategies that emit the column get a
+    # stop; the rest keep running stopless, so adding this changed nothing
+    # about the existing nineteen.
+    #
+    # An explicit argument still wins, so a caller sweeping stop levels can
+    # override the strategy's own without editing it.
+    if (
+        "stop_pct" in signals
+        and stop_loss_pct is None
+        and stop_loss_pct_series is None
+    ):
+        stop_loss_pct_series = signals["stop_pct"]
+
     return run_backtest(
         df, signals,
         stop_loss_pct=stop_loss_pct, stop_loss_pct_series=stop_loss_pct_series, max_hold_bars=max_hold_bars,

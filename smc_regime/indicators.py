@@ -196,3 +196,42 @@ def curvature_r2_gain(close: pd.Series, window: int) -> pd.Series:
         return max(0.0, r2_quad - r2_lin)
 
     return close.rolling(window).apply(_r2_gain, raw=True)
+
+
+def _confirmed_pivot(series: pd.Series, left: int, right: int, want_min: bool) -> pd.Series:
+    """The most recent CONFIRMED pivot level, as known at each bar.
+
+    A pivot at bar i is only a pivot once `right` further bars have failed
+    to beat it, so it cannot be known until bar i + right. Reading the raw
+    centred rolling extreme would therefore let a strategy trade a swing
+    low several bars before the market could have identified it -- the
+    classic lookahead that makes a liquidity-sweep backtest look superb.
+
+    So the pivot flag and its level are both shifted forward by `right`
+    before being carried, and the value at bar t reflects only information
+    available at bar t.
+    """
+    window = left + right + 1
+    extreme = series.rolling(window, center=True).min() if want_min else series.rolling(window, center=True).max()
+    is_pivot = series == extreme
+    # Shift by `right`: what bar t learns is the pivot that sat at t - right.
+    confirmed = is_pivot.shift(right).fillna(False).astype(bool)
+    level = series.shift(right).where(confirmed)
+    return level.ffill()
+
+
+def swing_low(df: pd.DataFrame, left: int = 3, right: int = 3) -> pd.Series:
+    """Most recent confirmed swing (pivot) low, carried forward.
+
+    This is the level a bullish swing-failure setup sweeps: resting sell
+    stops sit just under it, and taking them out is the liquidity grab the
+    pattern is built on.
+    """
+    return _confirmed_pivot(df["Low"], left, right, want_min=True)
+
+
+def swing_high(df: pd.DataFrame, left: int = 3, right: int = 3) -> pd.Series:
+    """Most recent confirmed swing (pivot) high, carried forward -- the
+    liquidity on the other side, and the natural structural target for a
+    long taken off a swept low."""
+    return _confirmed_pivot(df["High"], left, right, want_min=False)

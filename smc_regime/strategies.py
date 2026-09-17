@@ -10,6 +10,7 @@ from __future__ import annotations
 import pandas as pd
 
 from . import indicators as ind
+from .regime import classify_regime, confirmed_regime
 
 
 def rsi_mean_reversion(df: pd.DataFrame, window: int = 14, oversold: float = 30.0, overbought: float = 70.0) -> pd.DataFrame:
@@ -490,6 +491,54 @@ def swing_failure_delayed(
                           stop_buffer_pct=stop_buffer_pct, target="swing_high")
 
 
+def swing_failure_chop_filter(
+    df: pd.DataFrame,
+    pivot_left: int = 3,
+    pivot_right: int = 3,
+    reclaim_bars: int = 3,
+    stop_buffer_pct: float = 0.25,
+    confirm_bars: int = 3,
+) -> pd.DataFrame:
+    """swing_failure_delayed, but only where the regime is not choppy.
+
+    The motivation is a real split rather than a hunch. On four names of
+    deliberately different character (AAPL, TSLA, XOM, KO, 1200 daily bars
+    each) the delayed variant pooled to +0.73%/trade entering in
+    trending/down and +0.57% in trending/up, against -0.33% in chop. That
+    is coherent: inside a range, price trading below a swing low is the
+    range's lower boundary being tested again, not liquidity being taken
+    against a trend, so the "failure" the pattern is named for has nothing
+    to fail against.
+
+    THE FILTER IS ITS OWN STRATEGY, not a flag on the others, for the
+    reason rsi_dip_recovery's docstring gives: every trade is already
+    tagged downstream with the regime active on entry, so folding the
+    filter into the base strategy would delete the very comparison that
+    justifies it. Kept separate, the desk can show all three side by side
+    and the choppy bucket stays populated by the unfiltered variants.
+
+    Two honest caveats. The filter is fitted on the same four tickers it
+    was measured on, so its edge here is not evidence of anything; only a
+    universe-wide run decides that. And filtering necessarily shrinks the
+    sample, which is the classic way a strategy's per-trade average
+    improves while its total return falls -- read both.
+
+    The regime call is causal: classify_regime uses trailing windows only,
+    and confirmed_regime is a forward pass that never reads ahead.
+    """
+    signals = _swing_failure(df, pivot_left, pivot_right, reclaim_bars,
+                             stop_buffer_pct, target="swing_high")
+    regime = confirmed_regime(classify_regime(df), confirm_bars=confirm_bars)
+    tradeable = (regime["regime"] != "choppy").reindex(signals.index).fillna(False)
+
+    signals = signals.copy()
+    signals["entry"] = signals["entry"] & tradeable.astype(bool)
+    # A stop belongs to an entry; drop the ones whose entry was filtered out
+    # so the column cannot describe a trade that never happened.
+    signals["stop_pct"] = signals["stop_pct"].where(signals["entry"])
+    return signals
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -512,4 +561,5 @@ STRATEGIES = {
     "rsi_dual_hma": rsi_dual_hma_trend,
     "swing_failure": swing_failure,
     "swing_failure_delayed": swing_failure_delayed,
+    "swing_failure_chop_filter": swing_failure_chop_filter,
 }

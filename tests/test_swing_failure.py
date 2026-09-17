@@ -110,9 +110,16 @@ check("10. the same-bar variant rejects a reclaim that arrives later",
 
 check("11. the delayed variant takes it", bool(later["entry"].iloc[12]))
 
-check("12. both variants are registered as separate strategies",
-      "swing_failure" in STRATEGIES and "swing_failure_delayed" in STRATEGIES
-      and len(STRATEGIES) == 21)
+# Registration, not the registry's size: asserting a total count makes
+# every future strategy break this test for no reason.
+from smc_regime.export_dashboard_data import STRATEGY_NAMES
+
+_SWING = ["swing_failure", "swing_failure_delayed", "swing_failure_chop_filter"]
+check("12. each variant is registered as its own strategy",
+      all(name in STRATEGIES for name in _SWING))
+
+check("12b. and each has a display label for the desk",
+      all(name in STRATEGY_NAMES for name in _SWING))
 
 # ---- the stop is actually wired into the engine -------------------------
 rng = np.random.default_rng(3)
@@ -141,6 +148,32 @@ check("14. an explicit stop_loss_pct overrides the strategy's own",
 plain = STRATEGIES["rsi"](big)
 check("15. strategies with no stop_pct column still run stopless",
       "stop_pct" not in plain)
+
+# ---- the chop-filtered variant ------------------------------------------
+from smc_regime.regime import classify_regime, confirmed_regime
+
+chop_sig = STRATEGIES["swing_failure_chop_filter"](big)
+base_sig = STRATEGIES["swing_failure_delayed"](big)
+
+check("16. filtering only ever removes entries, never invents them",
+      (chop_sig["entry"] & ~base_sig["entry"]).sum() == 0)
+
+check("17. and it does remove some", chop_sig["entry"].sum() < base_sig["entry"].sum())
+
+reg = confirmed_regime(classify_regime(big), confirm_bars=3)
+entered_regimes = reg.loc[chop_sig["entry"][chop_sig["entry"]].index, "regime"]
+check("18. no surviving entry is in a choppy regime",
+      (entered_regimes == "choppy").sum() == 0)
+
+check("19. a filtered-out entry drops its stop with it",
+      chop_sig["stop_pct"].notna().sum() == chop_sig["entry"].sum())
+
+# The filter must not reach forward: truncating the data cannot change an
+# entry the strategy already emitted.
+cut = 400
+partial = STRATEGIES["swing_failure_chop_filter"](big.iloc[:cut])
+check("20. truncating the data does not change earlier filtered entries",
+      partial["entry"].equals(chop_sig["entry"].iloc[:cut]))
 
 print()
 if failures:

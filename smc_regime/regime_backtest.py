@@ -59,6 +59,8 @@ def collect_trades(
     start_date: str | None = None,
     confirm_bars: int = 3,
     target_vol_pct: float | None = DEFAULT_TARGET_VOL_PCT,
+    stop_loss_pct: float | None = None,
+    max_hold_bars: int | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Backtest every strategy on every ticker and tag each trade with the
     regime/direction active on its entry date.
@@ -117,7 +119,26 @@ def collect_trades(
         # it depends only on the price history, not on the signal.
         sizes = vol_target_sizes(df, target_vol_pct, interval=interval) if target_vol_pct else None
         for strategy in STRATEGIES:
-            for trade in backtest_strategy(df, strategy, size_series=sizes):
+            # BOTH DEFAULT TO None, which is what every run so far has
+            # used: the engine has accepted a stop and a time limit since
+            # it was written and nothing ever passed one, so every figure
+            # on the desk describes holding a position until its exit
+            # signal fires, however far it falls first. On the 1d run that
+            # is 189 trades losing 50% or more and 5 losing 90% or more,
+            # concentrated in the long-hold strategies that top the desk
+            # -- rsi_dip_recovery's worst rode a position to -98.4% over an
+            # average 244-day hold, because "wait for RSI to recover" never
+            # gives up on one that does not.
+            #
+            # Passing a value here changes the TRADE SET, not just the
+            # returns: a stopped-out position frees the slot for a later
+            # entry that the held version never takes. So a stopped run is
+            # not comparable with an unstopped one trade-for-trade, which
+            # is exactly why this is a parameter rather than a new default.
+            for trade in backtest_strategy(
+                df, strategy, size_series=sizes,
+                stop_loss_pct=stop_loss_pct, max_hold_bars=max_hold_bars,
+            ):
                 if trade.entry_date not in regime.index:
                     continue
                 records.append(

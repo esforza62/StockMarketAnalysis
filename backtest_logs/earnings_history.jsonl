@@ -96,6 +96,7 @@
 {"as_of": "2026-09-12", "ticker": "CVX", "earnings_date": "2026-10-30", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "CZR", "earnings_date": "2026-10-27", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "DAL", "earnings_date": "2026-10-08", "is_estimate": true}
+{"as_of": "2026-09-19", "ticker": "DAL", "earnings_date": "2026-10-09", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "DASH", "earnings_date": "2026-11-04", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "DDOG", "earnings_date": "2026-11-05", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "DECK", "earnings_date": "2026-10-22", "is_estimate": true}
@@ -270,6 +271,7 @@
 {"as_of": "2026-09-12", "ticker": "PFGC", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PG", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PGR", "earnings_date": "2026-10-14", "is_estimate": true}
+{"as_of": "2026-09-19", "ticker": "PGR", "earnings_date": "2026-10-14", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PHM", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PINS", "earnings_date": "2026-11-09", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "PLD", "earnings_date": "2026-10-15", "is_estimate": false}
@@ -363,6 +365,7 @@
 {"as_of": "2026-09-12", "ticker": "VEEV", "earnings_date": "2026-11-25", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VFS", "earnings_date": "2026-09-17", "is_estimate": true}
 {"as_of": "2026-09-18", "ticker": "VFS", "earnings_date": "2026-09-18", "is_estimate": true}
+{"as_of": "2026-09-19", "ticker": "VFS", "earnings_date": "2026-09-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRSN", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRT", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRTX", "earnings_date": "2026-11-02", "is_estimate": false}

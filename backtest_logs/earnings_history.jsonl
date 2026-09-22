@@ -90,6 +90,7 @@
 {"as_of": "2026-09-12", "ticker": "CRWV", "earnings_date": "2026-11-11", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CSCO", "earnings_date": "2026-11-12", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CSX", "earnings_date": "2026-10-22", "is_estimate": true}
+{"as_of": "2026-09-22", "ticker": "CSX", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CTAS", "earnings_date": "2026-09-23", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CTSH", "earnings_date": "2026-10-28", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CVNA", "earnings_date": "2026-10-28", "is_estimate": true}
@@ -366,6 +367,7 @@
 {"as_of": "2026-09-12", "ticker": "VFS", "earnings_date": "2026-09-17", "is_estimate": true}
 {"as_of": "2026-09-18", "ticker": "VFS", "earnings_date": "2026-09-18", "is_estimate": true}
 {"as_of": "2026-09-19", "ticker": "VFS", "earnings_date": "2026-09-21", "is_estimate": true}
+{"as_of": "2026-09-22", "ticker": "VFS", "earnings_date": "2026-09-22", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRSN", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRT", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRTX", "earnings_date": "2026-11-02", "is_estimate": false}

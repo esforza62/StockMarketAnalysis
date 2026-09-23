@@ -172,6 +172,7 @@
 {"as_of": "2026-09-12", "ticker": "IBKR", "earnings_date": "2026-10-20", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "IBM", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "ICE", "earnings_date": "2026-10-29", "is_estimate": true}
+{"as_of": "2026-09-23", "ticker": "ICE", "earnings_date": "2026-10-29", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "IDXX", "earnings_date": "2026-11-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "INTC", "earnings_date": "2026-10-22", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "INTU", "earnings_date": "2026-11-19", "is_estimate": true}
@@ -286,6 +287,7 @@
 {"as_of": "2026-09-12", "ticker": "PYPL", "earnings_date": "2026-10-27", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "QBTS", "earnings_date": "2026-11-05", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "QCOM", "earnings_date": "2026-10-29", "is_estimate": true}
+{"as_of": "2026-09-23", "ticker": "QCOM", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "QMCO", "earnings_date": "2026-11-09", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "QS", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "QSI", "earnings_date": "2026-11-05", "is_estimate": true}
@@ -328,6 +330,7 @@
 {"as_of": "2026-09-12", "ticker": "STZ", "earnings_date": "2026-10-06", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "SWKS", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SYF", "earnings_date": "2026-10-14", "is_estimate": false}
+{"as_of": "2026-09-23", "ticker": "SYF", "earnings_date": "2026-10-20", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "SYK", "earnings_date": "2026-10-29", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "T", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "TDY", "earnings_date": "2026-10-21", "is_estimate": false}
@@ -355,6 +358,7 @@
 {"as_of": "2026-09-12", "ticker": "UAL", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "UBER", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "UEC", "earnings_date": "2026-09-24", "is_estimate": false}
+{"as_of": "2026-09-23", "ticker": "UEC", "earnings_date": "2026-09-29", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "UL", "earnings_date": "2026-07-28", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "ULTA", "earnings_date": "2026-12-03", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "UNH", "earnings_date": "2026-10-27", "is_estimate": true}
@@ -368,6 +372,7 @@
 {"as_of": "2026-09-18", "ticker": "VFS", "earnings_date": "2026-09-18", "is_estimate": true}
 {"as_of": "2026-09-19", "ticker": "VFS", "earnings_date": "2026-09-21", "is_estimate": true}
 {"as_of": "2026-09-22", "ticker": "VFS", "earnings_date": "2026-09-22", "is_estimate": true}
+{"as_of": "2026-09-23", "ticker": "VFS", "earnings_date": "2026-09-23", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRSN", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRT", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRTX", "earnings_date": "2026-11-02", "is_estimate": false}
@@ -379,6 +384,7 @@
 {"as_of": "2026-09-12", "ticker": "WFC", "earnings_date": "2026-10-13", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "WMT", "earnings_date": "2026-11-19", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "WRB", "earnings_date": "2026-10-19", "is_estimate": true}
+{"as_of": "2026-09-23", "ticker": "WRB", "earnings_date": "2026-10-19", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "WSM", "earnings_date": "2026-11-18", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "WTW", "earnings_date": "2026-10-29", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "WYNN", "earnings_date": "2026-11-05", "is_estimate": true}

@@ -93,6 +93,7 @@
 {"as_of": "2026-09-12", "ticker": "CSX", "earnings_date": "2026-10-22", "is_estimate": true}
 {"as_of": "2026-09-22", "ticker": "CSX", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CTAS", "earnings_date": "2026-09-23", "is_estimate": false}
+{"as_of": "2026-09-25", "ticker": "CTAS", "earnings_date": "2026-12-17", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "CTSH", "earnings_date": "2026-10-28", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CVNA", "earnings_date": "2026-10-28", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "CVX", "earnings_date": "2026-10-30", "is_estimate": true}
@@ -172,6 +173,7 @@
 {"as_of": "2026-09-12", "ticker": "HPE", "earnings_date": "2026-09-02", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "HPQ", "earnings_date": "2026-11-24", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "IBKR", "earnings_date": "2026-10-20", "is_estimate": false}
+{"as_of": "2026-09-25", "ticker": "IBKR", "earnings_date": "2026-10-15", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "IBM", "earnings_date": "2026-10-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "ICE", "earnings_date": "2026-10-29", "is_estimate": true}
 {"as_of": "2026-09-23", "ticker": "ICE", "earnings_date": "2026-10-29", "is_estimate": false}
@@ -269,6 +271,7 @@
 {"as_of": "2026-09-12", "ticker": "OXY", "earnings_date": "2026-11-09", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PANW", "earnings_date": "2026-11-19", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "PAYX", "earnings_date": "2026-09-23", "is_estimate": false}
+{"as_of": "2026-09-25", "ticker": "PAYX", "earnings_date": "2026-12-18", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "PCAR", "earnings_date": "2026-10-27", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PCG", "earnings_date": "2026-10-22", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "PDD", "earnings_date": "2026-11-18", "is_estimate": true}
@@ -298,6 +301,7 @@
 {"as_of": "2026-09-12", "ticker": "QUBT", "earnings_date": "2026-11-09", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "RCL", "earnings_date": "2026-10-27", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "REGN", "earnings_date": "2026-10-28", "is_estimate": true}
+{"as_of": "2026-09-25", "ticker": "REGN", "earnings_date": "2026-10-30", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "RF", "earnings_date": "2026-10-16", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "RGTI", "earnings_date": "2026-11-10", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "RIVN", "earnings_date": "2026-11-03", "is_estimate": true}
@@ -328,6 +332,7 @@
 {"as_of": "2026-09-12", "ticker": "SPCX", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SPGI", "earnings_date": "2026-10-29", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SPOT", "earnings_date": "2026-11-03", "is_estimate": true}
+{"as_of": "2026-09-25", "ticker": "SPOT", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "STLA", "earnings_date": "2026-10-28", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "STT", "earnings_date": "2026-10-14", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "STX", "earnings_date": "2026-10-27", "is_estimate": false}
@@ -378,6 +383,7 @@
 {"as_of": "2026-09-22", "ticker": "VFS", "earnings_date": "2026-09-22", "is_estimate": true}
 {"as_of": "2026-09-23", "ticker": "VFS", "earnings_date": "2026-09-23", "is_estimate": true}
 {"as_of": "2026-09-24", "ticker": "VFS", "earnings_date": "2026-09-24", "is_estimate": true}
+{"as_of": "2026-09-25", "ticker": "VFS", "earnings_date": "2026-09-25", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRSN", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRT", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "VRTX", "earnings_date": "2026-11-02", "is_estimate": false}

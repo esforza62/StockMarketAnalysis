@@ -28,6 +28,7 @@ STRATEGY_NAMES = {
     "swing_failure": "Swing Failure",
     "swing_failure_delayed": "Swing Failure (Delayed Reclaim)",
     "swing_failure_chop_filter": "Swing Failure (Chop-Filtered)",
+    "sweep_outside": "Sweep / Outside Bar Reversal",
     "vwap_mean_reversion": "VWAP Mean Reversion",
     "vwap_breakout": "VWAP Breakout",
     "vwap_pullback": "VWAP Pullback",

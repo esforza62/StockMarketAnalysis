@@ -10,6 +10,7 @@ from __future__ import annotations
 import pandas as pd
 
 from . import indicators as ind
+from . import patterns as pat
 from .regime import classify_regime, confirmed_regime
 
 
@@ -539,6 +540,78 @@ def swing_failure_chop_filter(
     return signals
 
 
+def sweep_outside_reversal(
+    df: pd.DataFrame,
+    wick_body_mult: float = 2.0,
+    wick_range_frac: float = 0.5,
+    require_sweep: bool = True,
+    atr_window: int = 14,
+    min_range_atr: float = 0.5,
+    slot_normalized_atr: bool = True,
+    require_close_beyond: bool = True,
+    middle_colour: str = "same",
+    confirm: str = "first_extreme",
+) -> pd.DataFrame:
+    """Price-structure reversal on either of two patterns firing -- the
+    first strategy here driven by bar structure rather than an indicator.
+
+    Entry: EITHER a bullish three-bar sweep-and-reclaim (two red candles,
+    the second sweeping the first's low with a long lower wick, then a
+    close back above the first's high) OR a bullish outside bar (range
+    engulfs the prior bar, close beyond its high). Both are the same read
+    -- a level was taken, rejected, and reclaimed on the close -- over
+    three bars and two respectively, so OR-ing them widens coverage of one
+    idea rather than mixing two.
+    Exit: either pattern's bearish mirror.
+
+    Long only, like every strategy here: the bearish patterns are the exit,
+    not a short entry. The short side is a genuinely useful signal this
+    throws away -- the same reason rsi_dip_recovery notes for dropping its
+    own -- but taking it needs backtest.py's single-position long-only loop
+    extended to short entries, stops above entry, and same-bar reversal (a
+    stop-and-reverse strategy goes flat and loses the signal otherwise),
+    which is an engine change, not a strategy one.
+
+    No trend filter, deliberately -- see patterns.py's module docstring:
+    regime tagging downstream is what answers "which regime does this work
+    in," and a filter here would answer it by construction. Higher
+    timeframes are treated the same way: smc_regime.timeframes builds the
+    15m/1h/4h/1d ladder and smc_regime.mtf_cli reports outcomes split by
+    how many rungs agreed, rather than this function gating on agreement
+    that has not been shown to help yet.
+
+    Signal thresholds are ATR-relative against a per-time-of-day baseline
+    (patterns.slot_atr), which matters on any intraday interval and is a
+    no-op on daily bars.
+
+    MEASURED, AND IT DOES NOT BEAT RANDOM. Over 76 tickers of daily bars
+    since 2019 the bullish pattern returns 1.28% per month held against
+    1.78% for random entries drawn with the same holding profile, and 3.56%
+    for buy-and-hold. The headline win rate (66%) and mean trade (+25%) are
+    holding-period effects, not selection: all six middle_colour/confirm
+    combinations land between 1.63 and 1.98% per month held once hold time
+    is divided out, despite trade counts differing eightfold. Whether any
+    regime bucket is different is what the nightly regime-conditioned run
+    exists to answer -- this pools every regime together, which is exactly
+    the averaging that harness was built to avoid.
+    """
+    signals = pat.reversal_signals(
+        df,
+        wick_body_mult=wick_body_mult,
+        wick_range_frac=wick_range_frac,
+        require_sweep=require_sweep,
+        atr_window=atr_window,
+        min_range_atr=min_range_atr,
+        slot_normalized_atr=slot_normalized_atr,
+        require_close_beyond=require_close_beyond,
+        middle_colour=middle_colour,
+        confirm=confirm,
+    )
+    return pd.DataFrame(
+        {"entry": signals["bullish"].fillna(False), "exit": signals["bearish"].fillna(False)}
+    )
+
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "bollinger": bollinger_mean_reversion,
@@ -562,4 +635,5 @@ STRATEGIES = {
     "swing_failure": swing_failure,
     "swing_failure_delayed": swing_failure_delayed,
     "swing_failure_chop_filter": swing_failure_chop_filter,
+    "sweep_outside": sweep_outside_reversal,
 }

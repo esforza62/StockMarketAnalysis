@@ -109,6 +109,44 @@ def filter_contaminated_trades(trades: pd.DataFrame, splits: dict[str, list[pd.T
     return trades[~contaminated]
 
 
+def price_discontinuities(df: pd.DataFrame, max_bar_move: float = 0.25) -> list[pd.Timestamp]:
+    """Bars where an unadjusted series jumps implausibly far from the last one.
+
+    Complements the split cache rather than replacing it. The cache can only
+    catch what Yahoo reports as a split, and the worst contamination found
+    so far was not one: `BNY` hourly bars trade around $10 for months and
+    then step to $140, because the ticker changed hands (BK -> BNY) and the
+    intraday series splices two different securities. No split event, no
+    cache entry, and a single fabricated +1283% trade -- enough on its own
+    to reorder a 2,690-trade summary table.
+
+    A jump this large between consecutive bars means a corporate action, a
+    ticker reuse, or a bad tick, none of which a strategy can trade. The
+    threshold is deliberately loose: on intraday bars a real overnight gap
+    can approach it, so dropping the occasional genuine earnings move is
+    the accepted cost. One discarded real trade is cheap; one fabricated
+    return is not, because it survives averaging and nothing downstream
+    flags it.
+    """
+    close = df["Close"]
+    move = (close / close.shift(1) - 1).abs()
+    return list(df.index[move > max_bar_move])
+
+
+def filter_discontinuity_trades(
+    trades: pd.DataFrame, discontinuities: list[pd.Timestamp]
+) -> pd.DataFrame:
+    """Drop trades whose window straddles one of those jumps -- same shape of
+    rule as filter_contaminated_trades, keyed on timestamps rather than on
+    a per-ticker split list."""
+    if trades.empty or not discontinuities:
+        return trades
+    straddles = pd.Series(False, index=trades.index)
+    for stamp in discontinuities:
+        straddles |= (trades["entry_date"] < stamp) & (trades["exit_date"] >= stamp)
+    return trades[~straddles]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Refresh the stock-split date cache used to filter contaminated intraday trades.")
     parser.add_argument("--tickers-file", default="smc_regime/tracking_universe.txt")

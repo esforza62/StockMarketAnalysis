@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import db as db_module
@@ -23,14 +24,60 @@ from .setup_score import compute_universe_setup_scores
 
 
 def _run_date(conn, interval: str) -> str | None:
-    """The date to file tonight's grades under: the date of the snapshot
-    run that produced them.
+    """The date to file tonight's grades under: the date of the LAST BAR the
+    run analysed, which is the session the grades actually describe.
 
-    The scheduled run fires at 21:00 UTC on weekdays -- 17:00 ET, after the
-    US close -- so its UTC date is the session date it reflects. A run
-    dispatched by hand outside that window can straddle midnight UTC and
-    file a Friday session under Saturday, which is what --as-of is for.
+    THIS USED TO BE THE RUN'S WALL-CLOCK DATE, on the reasoning that the
+    scheduled run fires at 21:00 UTC and its UTC date is therefore the
+    session date. That stopped being true: GitHub's scheduler drifted, and
+    the nightly now starts between 23:11 and 23:59 UTC, so the 1d step
+    finishes on either side of midnight unpredictably. Four of six runs
+    filed wrongly before this was caught --
+
+        run 38  1d finished 00:11  Mon session filed as Tue
+        run 39  1d finished 23:47  filed as Tue too, COLLIDING with 38,
+                                   and the duplicate was deduped away
+        run 41  1d finished 00:10  Thu session filed as Fri
+        run 42  1d finished 00:10  Fri session filed as SATURDAY
+
+    -- costing one capture outright and mis-dating three more, in the one
+    dataset whose whole value is that it accumulates correctly over time.
+
+    The last bar is read from the OPEN trades: run_backtest marks a
+    position still open at the end of the data to market at that final
+    bar, so any is_open row's exit_date IS the last bar's timestamp. There
+    are ~1,900 of them per interval, so this is not a thin inference.
+
+    Falling back in order: open trades, then the latest exit of any trade
+    (a floor -- the last bar is at or after it), then the old wall-clock
+    behaviour for a database written before is_open existed.
     """
+    row = conn.execute(
+        """SELECT MAX(t.exit_date)
+             FROM trades t
+            WHERE t.is_open = 1
+              AND t.run_id = (
+                  SELECT id FROM runs WHERE interval = ? ORDER BY run_at DESC LIMIT 1
+              )""",
+        (interval,),
+    ).fetchone()
+    if row and row[0]:
+        return datetime.fromtimestamp(row[0], timezone.utc).date().isoformat()
+
+    # No open positions recorded: either every position closed on the final
+    # bar, or this database predates the is_open column. The newest exit is
+    # then the best available floor for the last bar.
+    row = conn.execute(
+        """SELECT MAX(t.exit_date)
+             FROM trades t
+            WHERE t.run_id = (
+                  SELECT id FROM runs WHERE interval = ? ORDER BY run_at DESC LIMIT 1
+              )""",
+        (interval,),
+    ).fetchone()
+    if row and row[0]:
+        return datetime.fromtimestamp(row[0], timezone.utc).date().isoformat()
+
     row = conn.execute(
         "SELECT run_at FROM runs WHERE interval = ? ORDER BY run_at DESC LIMIT 1", (interval,)
     ).fetchone()

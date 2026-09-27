@@ -17,7 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from smc_regime import indicators as ind
 from smc_regime.backtest import backtest_strategy, run_backtest
-from smc_regime.strategies import STRATEGIES, swing_failure, swing_failure_delayed
+from smc_regime.strategies import STRATEGIES, swing_failure_delayed
 
 failures = []
 
@@ -69,7 +69,7 @@ lows =  [10, 9, 8, 7, 6, 5, 6, 7, 8, 9,  4, 8, 9, 10, 11, 12]
 closes= [11, 10, 9, 8, 7, 6, 7, 8, 9, 10, 7, 9, 10, 11, 12, 13]
 highs = [c + 1 for c in closes]
 sfp = frame(lows, highs, closes)
-sig = swing_failure(sfp, pivot_left=3, pivot_right=3)
+sig = swing_failure_delayed(sfp, pivot_left=3, pivot_right=3, reclaim_bars=0)
 
 check("5. the same-bar sweep-and-reclaim is an entry", bool(sig["entry"].iloc[10]))
 
@@ -85,7 +85,7 @@ check("8. stop_pct is set only on the entry bar",
 # A sweep that does NOT reclaim is not a swing failure.
 lows2 =  [10, 9, 8, 7, 6, 5, 6, 7, 8, 9,  4, 3, 2, 1, 1, 1]
 closes2= [11, 10, 9, 8, 7, 6, 7, 8, 9, 10, 4.5, 3.5, 2.5, 1.5, 1.5, 1.5]
-no_reclaim = swing_failure(frame(lows2, [c + 1 for c in closes2], closes2), 3, 3)
+no_reclaim = swing_failure_delayed(frame(lows2, [c + 1 for c in closes2], closes2), 3, 3, reclaim_bars=0)
 check("9. a sweep with no reclaim is not an entry", no_reclaim["entry"].sum() == 0)
 
 # ---- the two variants genuinely differ ----------------------------------
@@ -102,7 +102,7 @@ lows3 =  [10, 9, 8, 7, 6, 5, 6, 7, 8, 9,   4,   4.2, 5.5, 9, 10, 11]
 closes3= [11, 10, 9, 8, 7, 6, 7, 8, 9, 10, 4.5, 4.8, 7.0, 10, 11, 12]
 delayed_df = frame(lows3, [c + 1 for c in closes3], closes3)
 
-same_bar = swing_failure(delayed_df, 3, 3)
+same_bar = swing_failure_delayed(delayed_df, 3, 3, reclaim_bars=0)
 later = swing_failure_delayed(delayed_df, 3, 3, reclaim_bars=3)
 
 check("10. the same-bar variant rejects a reclaim that arrives later",
@@ -114,7 +114,11 @@ check("11. the delayed variant takes it", bool(later["entry"].iloc[12]))
 # every future strategy break this test for no reason.
 from smc_regime.export_dashboard_data import STRATEGY_NAMES
 
-_SWING = ["swing_failure", "swing_failure_delayed", "swing_failure_chop_filter"]
+# Only the delayed variant survives. The same-bar version was strictly
+# dominated across 415 tickers -- fewer trades (26,330 vs 39,999), lower
+# mean (+0.51 vs +0.57), lower total, identical worst trade -- and the
+# chop-filtered one was disproven outright.
+_SWING = ["swing_failure_delayed", "sweep_outside"]
 check("12. each variant is registered as its own strategy",
       all(name in STRATEGIES for name in _SWING))
 
@@ -149,31 +153,13 @@ plain = STRATEGIES["rsi"](big)
 check("15. strategies with no stop_pct column still run stopless",
       "stop_pct" not in plain)
 
-# ---- the chop-filtered variant ------------------------------------------
-from smc_regime.regime import classify_regime, confirmed_regime
-
-chop_sig = STRATEGIES["swing_failure_chop_filter"](big)
-base_sig = STRATEGIES["swing_failure_delayed"](big)
-
-check("16. filtering only ever removes entries, never invents them",
-      (chop_sig["entry"] & ~base_sig["entry"]).sum() == 0)
-
-check("17. and it does remove some", chop_sig["entry"].sum() < base_sig["entry"].sum())
-
-reg = confirmed_regime(classify_regime(big), confirm_bars=3)
-entered_regimes = reg.loc[chop_sig["entry"][chop_sig["entry"]].index, "regime"]
-check("18. no surviving entry is in a choppy regime",
-      (entered_regimes == "choppy").sum() == 0)
-
-check("19. a filtered-out entry drops its stop with it",
-      chop_sig["stop_pct"].notna().sum() == chop_sig["entry"].sum())
-
-# The filter must not reach forward: truncating the data cannot change an
-# entry the strategy already emitted.
-cut = 400
-partial = STRATEGIES["swing_failure_chop_filter"](big.iloc[:cut])
-check("20. truncating the data does not change earlier filtered entries",
-      partial["entry"].equals(chop_sig["entry"].iloc[:cut]))
+# The chop-filtered variant was DELETED, and its tests with it. It gated
+# entries on the regime not being choppy, on the strength of four tickers
+# where chop returned -0.33% per trade. Across all 415 it returns +0.584%
+# -- the best of the three main regimes -- so the filter was excluding the
+# most profitable bucket. It discarded 30% of trades and 6,971 points of
+# total return to move the per-trade average by -0.008pp, which is the
+# sample-shrinking signature this project already knew to watch for.
 
 print()
 if failures:

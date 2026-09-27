@@ -132,6 +132,36 @@ def vol_target_sizes(
     return sizes.fillna(cap)
 
 
+def _slipped(price: float, opening: bool, slippage_pct: float) -> float:
+    """The fill you actually get, which is always the worse one.
+
+    Opening means BUYING, so you pay up; closing means SELLING, so you
+    receive less. One round trip costs 2 x slippage_pct, and that is the
+    whole point of charging it per fill rather than as a flat haircut on
+    the result: a strategy holding 40 bars wears it once, a strategy
+    holding 4 bars wears it ten times as often per unit of time. Turnover
+    becomes expensive, which it is.
+
+    Applied at every exit path -- signal, stop, max-hold, and the
+    mark-to-market of a position still open at the end of the data -- so no
+    route out of a trade is quietly cheaper than another. A STOP IS A LEVEL
+    YOU WANTED, NOT A FILL YOU GOT: slipping it is the honest treatment,
+    and it matters most for the strategies whose risk case rests on the
+    stop holding.
+
+    The open position's mark wears it too. That is arguably a cost not yet
+    paid, but the alternative makes open and closed trades incomparable,
+    and open positions were recorded to REMOVE a bias rather than add one.
+
+    Defaults to zero everywhere, so every existing figure is unchanged
+    until a caller asks for it.
+    """
+    if not slippage_pct:
+        return price
+    fraction = slippage_pct / 100
+    return price * (1 + fraction) if opening else price * (1 - fraction)
+
+
 def run_backtest(
     df: pd.DataFrame,
     signals: pd.DataFrame,
@@ -139,6 +169,7 @@ def run_backtest(
     stop_loss_pct_series: pd.Series | None = None,
     max_hold_bars: int | None = None,
     size_series: pd.Series | None = None,
+    slippage_pct: float = 0.0,
 ) -> list[Trade]:
     """Simulate a single-position long-only strategy from entry/exit signals.
 
@@ -190,18 +221,18 @@ def run_backtest(
             if stop_price is not None:
                 low = df.loc[date, "Low"]
                 if low <= stop_price:
-                    trades.append(Trade(entry_date, date, entry_price, stop_price, size))
+                    trades.append(Trade(entry_date, date, entry_price, _slipped(stop_price, False, slippage_pct), size))
                     in_position = False
                     continue
             if max_hold_bars is not None and bars_held >= max_hold_bars:
-                trades.append(Trade(entry_date, date, entry_price, close, size))
+                trades.append(Trade(entry_date, date, entry_price, _slipped(close, False, slippage_pct), size))
                 in_position = False
                 continue
 
         if not in_position and row["entry"]:
             in_position = True
             entry_date = date
-            entry_price = close
+            entry_price = _slipped(close, True, slippage_pct)
             bars_held = 0
             if size_series is not None:
                 raw = size_series.get(date)
@@ -214,7 +245,7 @@ def run_backtest(
             else:
                 stop_price = None
         elif in_position and row["exit"]:
-            trades.append(Trade(entry_date, date, entry_price, close, size))
+            trades.append(Trade(entry_date, date, entry_price, _slipped(close, False, slippage_pct), size))
             in_position = False
 
     # MARK THE SURVIVOR TO MARKET instead of dropping it.
@@ -240,7 +271,8 @@ def run_backtest(
     if in_position:
         last_date = signals.index[-1]
         trades.append(
-            Trade(entry_date, last_date, entry_price, df.loc[last_date, "Close"], size, is_open=True)
+            Trade(entry_date, last_date, entry_price,
+                  _slipped(df.loc[last_date, "Close"], False, slippage_pct), size, is_open=True)
         )
 
     return trades
@@ -255,6 +287,7 @@ def backtest_strategy(
     size_series: pd.Series | None = None,
     target_vol_pct: float | None = None,
     interval: str = "1d",
+    slippage_pct: float = 0.0,
 ) -> list[Trade]:
     """target_vol_pct is the convenience form of size_series: it builds one
     from this ticker's own bars via vol_target_sizes(). Passing both is a
@@ -283,5 +316,5 @@ def backtest_strategy(
     return run_backtest(
         df, signals,
         stop_loss_pct=stop_loss_pct, stop_loss_pct_series=stop_loss_pct_series, max_hold_bars=max_hold_bars,
-        size_series=size_series,
+        size_series=size_series, slippage_pct=slippage_pct,
     )

@@ -375,8 +375,52 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+
+def rsi2_connors(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0, exit_rsi: float = 80.0) -> pd.DataFrame:
+    """Larry Connors' 2-period RSI mean reversion, the unfiltered form.
+
+    A 2-bar RSI is violently reactive -- one sharp down day can put it under
+    5 -- so it fires on short-term panic rather than on trend. Entry is the
+    close of the bar whose RSI(2) is below `oversold`, exit the close of the
+    bar whose RSI(2) clears `exit_rsi`.
+
+    The published figures for this form are SPY 1993-2026: 0.9% average gain
+    per trade, 9% annual, 34% max drawdown, invested 28% of the time. Those
+    are RAW returns on ONE index, and a raw return in a rising market mostly
+    measures the market -- the trap excess_cli exists to catch. Measured that
+    way these clear it (SPY excess +0.620%, t 3.72; QQQ +0.568%, t 2.09) and
+    so does the universe (+0.329%, t 3.32 ticker-clustered), which is why
+    they are here. Treat the published headline as a hypothesis regardless.
+
+    ind.rsi() already uses Wilder's smoothing (ewm with alpha=1/window),
+    which is the calculation Connors specifies, so no separate RSI is needed
+    for the short lookback.
+    """
+    r = ind.rsi(df["Close"], rsi_window)
+    entry = r < oversold
+    exit_ = (r > exit_rsi) & (r.shift(1) <= exit_rsi)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def rsi2_connors_prior_high(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0) -> pd.DataFrame:
+    """rsi2_connors exiting on the first close above the PRIOR bar's high,
+    with no trend filter -- the variant the published SPY test reports the
+    lowest drawdown for (0.5% per trade, 15% max drawdown, 76% win rate).
+
+    A far tighter exit than an RSI threshold: it takes the first sign the
+    bounce has actually started instead of waiting for the oscillator to
+    reach an extreme, which is why it gives up half the per-trade gain and
+    most of the drawdown.
+    """
+    r = ind.rsi(df["Close"], rsi_window)
+    entry = r < oversold
+    exit_ = df["Close"] > df["High"].shift(1)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
+    "rsi2": rsi2_connors,
+    "rsi2_prior_high": rsi2_connors_prior_high,
     "bollinger": bollinger_mean_reversion,
     "macd": macd_crossover,
     "ema_cross": ema_trend_cross,

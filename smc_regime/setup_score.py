@@ -684,15 +684,24 @@ def score_ticker(
         val_pts, val_detail = _VALUATION_MAX / 2, valuation_missing_detail
 
     total = sum(pts for pts, _, _ in tech.values()) + streak_pts + align_pts + sec_ind_pts + val_pts
+    # Grade, score and borderline all come off ONE rounded value. Grading the
+    # raw total while reporting the rounded one disagreed whenever rounding
+    # carried a score onto a cut: a total of 75.96 graded B but reported
+    # total_points 76.0, which the documented A >= 76 cut reads as an A, and
+    # _borderline on that same 76.0 then called the row "above" the cut with
+    # B on the far side -- the grade it already held. About one ticker a run
+    # landed in that window. The rounded number is the one shown and the one
+    # the thresholds are quoted against, so it is the one that decides.
+    total_points = round(total, 1)
     row = {
         "ticker": ticker,
         "sector": sector,
         "industry": industry,
         "regime": regime,
         "direction": direction,
-        "grade": _grade(total),
-        "total_points": round(total, 1),
-        "borderline": _borderline(round(total, 1)),
+        "grade": _grade(total_points),
+        "total_points": total_points,
+        "borderline": _borderline(total_points),
         "streak_points": round(streak_pts, 1),
         "streak_bars": int(streak_bars),
         "alignment_points": round(align_pts, 1),

@@ -551,8 +551,71 @@ def sweep_outside_reversal(
     )
 
 
+
+def rsi2_connors(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0, exit_rsi: float = 80.0) -> pd.DataFrame:
+    """Larry Connors' 2-period RSI mean reversion, the unfiltered form.
+
+    A 2-bar RSI is violently reactive -- one sharp down day can put it under
+    5 -- so it fires on short-term panic rather than on trend. Entry is the
+    close of the bar whose RSI(2) is below `oversold`, exit the close of the
+    bar whose RSI(2) clears `exit_rsi`.
+
+    The published figures for this form are SPY 1993-2026: 0.9% average gain
+    per trade, 9% annual, 34% max drawdown, invested 28% of the time. Those
+    are RAW returns on ONE index, which is the same basis on which this
+    project's own swing_failure_delayed looked like a +0.57% strategy before
+    its entry timing was measured against doing nothing in the same regime
+    and came back at +0.01%. Treat the headline as a hypothesis.
+
+    ind.rsi() already uses Wilder's smoothing (ewm with alpha=1/window),
+    which is the calculation Connors specifies, so no separate RSI is needed
+    for the short lookback.
+    """
+    r = ind.rsi(df["Close"], rsi_window)
+    entry = r < oversold
+    exit_ = (r > exit_rsi) & (r.shift(1) <= exit_rsi)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def rsi2_connors_trend(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0, exit_rsi: float = 80.0, ma_window: int = 200) -> pd.DataFrame:
+    """rsi2_connors with Connors' 200-day trend filter: longs only while the
+    close is above its 200-period SMA.
+
+    The filter is the part Connors is most emphatic about -- buying an
+    oversold reading inside a downtrend is catching a falling knife, and the
+    published SPY test puts it at 0.95% per trade and 31% drawdown against
+    the unfiltered 0.9%/34%, at the cost of being invested 18% of the time
+    rather than 28%. Note it RAISES per-trade gain while LOWERING CAGR,
+    which is what a filter that removes trades rather than improves them
+    looks like.
+    """
+    r = ind.rsi(df["Close"], rsi_window)
+    uptrend = df["Close"] > df["Close"].rolling(ma_window).mean()
+    entry = (r < oversold) & uptrend
+    exit_ = (r > exit_rsi) & (r.shift(1) <= exit_rsi)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
+
+def rsi2_connors_prior_high(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0) -> pd.DataFrame:
+    """rsi2_connors exiting on the first close above the PRIOR bar's high,
+    with no trend filter -- the variant the published SPY test reports the
+    lowest drawdown for (0.5% per trade, 15% max drawdown, 76% win rate).
+
+    A far tighter exit than an RSI threshold: it takes the first sign the
+    bounce has actually started instead of waiting for the oscillator to
+    reach an extreme, which is why it gives up half the per-trade gain and
+    most of the drawdown.
+    """
+    r = ind.rsi(df["Close"], rsi_window)
+    entry = r < oversold
+    exit_ = df["Close"] > df["High"].shift(1)
+    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
+
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
+    "rsi2": rsi2_connors,
+    "rsi2_trend": rsi2_connors_trend,
+    "rsi2_prior_high": rsi2_connors_prior_high,
     "bollinger": bollinger_mean_reversion,
     "macd": macd_crossover,
     "ema_cross": ema_trend_cross,

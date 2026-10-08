@@ -577,25 +577,6 @@ def rsi2_connors(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0, 
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
-def rsi2_connors_trend(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0, exit_rsi: float = 80.0, ma_window: int = 200) -> pd.DataFrame:
-    """rsi2_connors with Connors' 200-day trend filter: longs only while the
-    close is above its 200-period SMA.
-
-    The filter is the part Connors is most emphatic about -- buying an
-    oversold reading inside a downtrend is catching a falling knife, and the
-    published SPY test puts it at 0.95% per trade and 31% drawdown against
-    the unfiltered 0.9%/34%, at the cost of being invested 18% of the time
-    rather than 28%. Note it RAISES per-trade gain while LOWERING CAGR,
-    which is what a filter that removes trades rather than improves them
-    looks like.
-    """
-    r = ind.rsi(df["Close"], rsi_window)
-    uptrend = df["Close"] > df["Close"].rolling(ma_window).mean()
-    entry = (r < oversold) & uptrend
-    exit_ = (r > exit_rsi) & (r.shift(1) <= exit_rsi)
-    return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
-
-
 def rsi2_connors_prior_high(df: pd.DataFrame, rsi_window: int = 2, oversold: float = 10.0) -> pd.DataFrame:
     """rsi2_connors exiting on the first close above the PRIOR bar's high,
     with no trend filter -- the variant the published SPY test reports the
@@ -614,7 +595,6 @@ def rsi2_connors_prior_high(df: pd.DataFrame, rsi_window: int = 2, oversold: flo
 STRATEGIES = {
     "rsi": rsi_mean_reversion,
     "rsi2": rsi2_connors,
-    "rsi2_trend": rsi2_connors_trend,
     "rsi2_prior_high": rsi2_connors_prior_high,
     "bollinger": bollinger_mean_reversion,
     "macd": macd_crossover,

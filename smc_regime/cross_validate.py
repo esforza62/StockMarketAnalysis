@@ -99,36 +99,27 @@ def _compounded_return_pct(returns: pd.Series) -> float:
 
 
 def _finalized_trades(df: pd.DataFrame, strategy_name: str) -> list[Trade]:
-    """Same as backtest_strategy(), but if a position is still open at the
-    last bar, close it there at the final available price instead of
-    dropping it.
+    """Every trade including one still open at the last bar, marked to
+    market there -- the apples-to-apples basis for the Backtesting.py
+    comparison, which reports an open position's unrealized P&L in
+    Return[%]/Equity Final while excluding it from its trade list.
 
-    backtest_strategy()/run_backtest() intentionally drop a dangling
-    open-at-data-end position everywhere else in this system (regime
-    tagging only makes sense for a trade with a real entry AND exit).
-    Backtesting.py's default behavior is the opposite: it marks an open
-    position to market in Return[%]/Equity Final but excludes it from the
-    trade list, which made an early version of this cross-check compare
-    a closed-trades-only number (ours) against a number that secretly
-    included one open position's unrealized P&L (Backtesting.py's) --
-    not actually the same measurement. Finalizing on both sides here (this
-    function, plus `finalize_trades=True` below) makes the comparison
-    apples-to-apples without changing backtest.py's production behavior.
+    THIS USED TO RE-DERIVE THE OPEN POSITION ITSELF, and it double-counted
+    once run_backtest started marking the survivor to market. Its docstring
+    still claimed run_backtest "intentionally drop[s] a dangling
+    open-at-data-end position everywhere else in this system", which was
+    true when it was written and stopped being true with the
+    open-position fix; the local loop then appended a second copy of a
+    trade run_backtest had already returned. Measured on cached 1d bars,
+    every ticker/strategy pair carrying an open position produced one
+    duplicated entry -- AAPL/rsi_dip_recovery reported 11 trades for 10,
+    AAPL/macd 72 for 71 -- inflating the very count this cross-check exists
+    to validate, and in the one direction least likely to be questioned.
+
+    run_backtest already does exactly what this needs, flagged is_open and
+    exit_reason="open", so finalizing is now just not filtering it out.
     """
-    signals = STRATEGIES[strategy_name](df)
-    trades = run_backtest(df, signals)
-
-    in_position = False
-    entry_date = entry_price = None
-    for date, row in signals.iterrows():
-        if not in_position and row["entry"]:
-            in_position, entry_date, entry_price = True, date, df.loc[date, "Close"]
-        elif in_position and row["exit"]:
-            in_position = False
-    if in_position:
-        last_date = df.index[-1]
-        trades = [*trades, Trade(entry_date, last_date, entry_price, df.loc[last_date, "Close"])]
-    return trades
+    return run_backtest(df, STRATEGIES[strategy_name](df))
 
 
 def _own_engine_stats(df: pd.DataFrame, strategy_name: str) -> dict | None:

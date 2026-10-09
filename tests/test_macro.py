@@ -122,6 +122,25 @@ check(
     all(datetime.fromisoformat(e["at"].replace("Z", "+00:00")) for e in real["events"]),
 )
 
+# The committed calendar must actually be CURRENT, not merely well-formed.
+# This is the one check that fails on the passage of time rather than on a
+# code change, and that is deliberate: the module docstring's point is that a
+# stale calendar shows nothing and so reads as a quiet week. A nightly log
+# warning did not stop it drifting to within days of expiry unnoticed, so it
+# fails here instead, where it blocks a push.
+_today = datetime.now(timezone.utc)
+_through = datetime.fromisoformat(real["covers_through"]).replace(tzinfo=timezone.utc)
+_days_left = (_through - _today).days
+check(
+    f"13. the committed calendar still covers today "
+    f"(through {real['covers_through']}, {_days_left}d left) -- if this fails, "
+    f"refresh smc_regime/data/macro_calendar.json from the economic calendar feed",
+    not macro.calendar_expired(real, _today),
+)
+if 0 <= _days_left <= 10:
+    print(f"    NOTE: calendar expires in {_days_left} day(s) -- top it up soon; "
+          "the feed publishes about a month ahead")
+
 # ---- level parsing -----------------------------------------------------
 # Both of these produce a plausible-looking wrong number rather than an
 # error, which is the only reason they are worth pinning down.
@@ -173,7 +192,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "13. with the market shut, change is measured against the previous session",
+    "14. with the market shut, change is measured against the previous session",
     shut["change_pct"] is not None and abs(shut["change_pct"] - 10.0) < 1e-9,
 )
 
@@ -191,12 +210,12 @@ finally:
     macro.requests = real_requests
 
 check(
-    "14. mid-session, change is measured against yesterday, not two days back",
+    "15. mid-session, change is measured against yesterday, not two days back",
     live["change_pct"] is not None and abs(live["change_pct"] - 5.0) < 1e-9,
 )
 
 check(
-    "15. an instrument with a bar dated today reports traded_today",
+    "16. an instrument with a bar dated today reports traded_today",
     live["traded_today"] is True and shut["traded_today"] is False,
 )
 
@@ -208,12 +227,12 @@ finally:
     macro.requests = real_requests
 
 check(
-    "16. one bar yields an unknown change rather than a flat zero",
+    "17. one bar yields an unknown change rather than a flat zero",
     lone["change_pct"] is None,
 )
 
 check(
-    "17. the equity benchmarks are configured as cash/future pairs",
+    "18. the equity benchmarks are configured as cash/future pairs",
     len(macro.INDEX_PAIRS) == 2
     and all(len(pair) == 2 and len(pair[0]) == 2 for pair in macro.INDEX_PAIRS),
 )
@@ -247,12 +266,12 @@ finally:
     macro.requests = real_requests
 
 check(
-    "18. a contract roll does not invert the sign of the day's change",
+    "19. a contract roll does not invert the sign of the day's change",
     rolled["change_pct"] is not None and rolled["change_pct"] > 0,
 )
 
 check(
-    "19. the vendor's change is used verbatim across a roll",
+    "20. the vendor's change is used verbatim across a roll",
     abs(rolled["change_pct"] - 2.287) < 1e-9,
 )
 
@@ -268,7 +287,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "20. an overnight future is measured against settlement, not its daily bar",
+    "21. an overnight future is measured against settlement, not its daily bar",
     overnight["change_pct"] is not None and abs(overnight["change_pct"] + 0.569) < 1e-9,
 )
 
@@ -282,7 +301,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "21. with no vendor change, the bar-derived figure is still used",
+    "22. with no vendor change, the bar-derived figure is still used",
     no_vendor["change_pct"] is not None and abs(no_vendor["change_pct"] - 10.0) < 1e-9,
 )
 
@@ -296,7 +315,7 @@ for bad in ("n/a", float("nan"), None):
     finally:
         macro.requests = real_requests
     check(
-        f"22. a junk vendor change ({bad!r}) falls back to the bars",
+        f"23. a junk vendor change ({bad!r}) falls back to the bars",
         junk is not None and junk["change_pct"] is not None
         and abs(junk["change_pct"] - 10.0) < 1e-9,
     )
@@ -326,7 +345,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "23. a future after the evening reopen is on the NEXT session",
+    "24. a future after the evening reopen is on the NEXT session",
     evening["session_date"] == "2026-09-16",
 )
 
@@ -337,7 +356,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "24. the same future mid-afternoon is still on today's session",
+    "25. the same future mid-afternoon is still on today's session",
     afternoon["session_date"] == "2026-09-15",
 )
 
@@ -354,7 +373,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "25. a Friday-evening reopen belongs to Monday, not the weekend",
+    "26. a Friday-evening reopen belongs to Monday, not the weekend",
     friday["session_date"] == "2026-09-21",
 )
 
@@ -366,7 +385,7 @@ finally:
     macro.requests = real_requests
 
 check(
-    "26. an index takes its session from its latest bar",
+    "27. an index takes its session from its latest bar",
     index["session_date"] == "2026-09-15",
 )
 

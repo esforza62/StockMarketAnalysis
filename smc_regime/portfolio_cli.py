@@ -69,6 +69,82 @@ returned +12.04% -- 9pp BEHIND the index, with -27.1% drawdown against
 SPY's -18.76%. Lower return and more risk, in a window it was not chosen
 on. Frictionless it does not clear the index either.
 
+WALK-FORWARD, five sequential folds (OOS 2022-2026), which is where the
+single split above turns out to have been misleading in BOTH directions.
+
+The pre-registered rule from the single split, applied per fold, picked
+10 slots by FALLBACK in 5 of 5 folds -- no candidate's drawdown ever
+cleared the benchmark's, in any window. It beat SPY in 2/5 folds at 0bp,
+1/5 at 5bp, 0/5 at 10bp, mean gap -5.52pp, with drawdown worse than SPY
+in 5 of 5. So the rule is not a tie-break that occasionally misfires: it
+reliably selects the worst cell in the grid, because maximising in-sample
+CAGR always reaches for concentration.
+
+It also refutes the reason the walk-forward was run. The hypothesis was
+that mean reversion should fare BETTER in weak or choppy markets and worse
+in persistent trends, which would have made the single split's failure an
+artefact of testing on 2024-2026. The correlation of excess against share
+of days SPY closed above its 200-day average is +0.71 -- the opposite
+sign. 2022, the only genuinely bad year (19% of days above the 200sma),
+is the WORST fold at -11.5pp. n=5 and that correlation leans heavily on
+one fold, so it is a direction and not a measurement, but the direction
+is backwards from the premise.
+
+FIXED CONFIGURATION, no selection step at all, so nothing to overfit:
+
+    slots   beat SPY   mean gap   mean maxDD   SPY maxDD
+       10      4/10     -1.58pp       -20.0%      -14.1%
+       20      4/10     -1.45pp       -16.3%      -14.1%
+       40      4/10     +0.45pp       -14.9%      -14.1%
+
+Read the convergence, not the ranking. As the book widens 10 -> 40 the gap
+to SPY goes to zero AND the drawdown goes to SPY's. That is the clearest
+statement of the whole exercise: 40 equal-weighted names drawn from 415
+large caps, held essentially always, IS the index with tracking error,
+whichever rule picked the names. The strategy's contribution is which 40
+and when, and holding 40-of-415 continuously dilutes that to nothing.
+
+RANKED SELECTION AND A QUALITY FLOOR (see portfolio.simulate). Scores are
+RSI(2) depth at the entry bar, so the deepest signals get the scarce
+slots, and a floor leaves a slot empty rather than filling it with a
+shallow signal. Effect against the random baseline, 20 cells each, 5bp:
+
+    mode      mean   median          range   helps   fill    maxDD
+    ranked   +1.57    +2.10   -6.7 .. +16.5   13/20    86%   -15.0%
+    floor3   +0.47    -1.48  -15.5 .. +25.7    9/20    74%   -14.5%
+    floor5   +1.45    +1.48  -27.3 .. +34.4   12/20    57%   -11.7%
+    floor7   -7.83    -5.41  -41.9 .. +22.9    6/20    23%    -6.6%
+    floor8  -11.88   -11.54  -40.5 .. +17.4    3/20     7%    -2.9%
+
+THE FLOOR IS AN EXPOSURE DIAL, NOT AN EDGE. floor5's +1.45 mean hides
++23.1 / -22.7 / -5.3 / -1.3 / +13.5 across the five folds: it wins where
+the market fell and loses where it rose, in proportion to the cash it
+holds. That is a short bet with no timing in it, and quoting the mean
+would be the most misleading number available. Its best single cell
+(+31.34% in 2022 against SPY's -18.84%) is the same coin landing well.
+
+RANKING IS THE ONE THING THAT HELD: +1.57pp, positive in ALL FIVE folds
+(+2.90 +0.18 +0.24 +2.74 +1.79), at unchanged exposure, so it is a pure
+selection effect rather than a market bet. It is also small, two of those
+folds are indistinguishable from zero, and +1.57pp does not close a
+5.52pp gap. RSI(2) depth carries a little information about which signal
+pays, and not much.
+
+THE DECISIVE NUMBER: of the 48 cells in 2024 and 2025 -- the two clean
+trending folds -- ZERO beat SPY. Across all 120 cells, 39 beat it at 5bp
+and 31 at 10bp, concentrated in 2022 where SPY fell 19% and nearly any
+less-invested book beat it by not falling.
+
+WHAT DID SURVIVE, for the fourth time in this project: risk reduction,
+never excess return. floor5 produced an indistinguishable CAGR on 56% of
+the capital at risk with -11.7% drawdown, beating SPY's drawdown in 14 of
+20 cells against random's 4 of 20; floor7 beat it in 20 of 20. Stops did
+this (a 2% stop on ema_cross cut tickers past -50% from 20.7% to 0.2% for
+0.054pp of excess) and diversification did this (10 -> 40 slots, -38.8%
+-> -33.7%). Three independent mechanisms, one shape of answer: this
+universe and this signal family can be made meaningfully less risky and
+cannot be made to out-return the index.
+
 The per-trade edge is real and survives every test of its own kind:
 +0.411% excess, t=8.87 ticker-clustered, holding ex-2020 and across 82% of
 tickers, break-even at 40.8bp per side. It does not survive being run as

@@ -20,4 +20,12 @@ the transition logic that turns "next report" into "reported on" -- including
 that a date moving EARLIER is a correction rather than a report, which would
 otherwise invent report dates that never happened.
 
+`test_oos_split.py` guards the boundary rule in `portfolio_cli`. A trade
+straddling the in/out-of-sample split is the one place a holdout can leak:
+kept in sample it lets post-split prices decide an in-sample result, and
+moved out of sample it credits the later window with an entry it never made.
+It must be dropped from BOTH, and the test pins that -- plus the split date
+itself, because the recorded result table was produced at 2024-01-01 and the
+prose would otherwise quietly describe a different experiment.
+
 Bars are synthetic throughout -- these run without a Tiingo key.

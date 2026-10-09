@@ -142,8 +142,10 @@ def run_backtest(
 ) -> list[Trade]:
     """Simulate a single-position long-only strategy from entry/exit signals.
 
-    stop_loss_pct, if set, closes the position at entry_price * (1 -
-    stop_loss_pct/100) the first bar whose Low touches that level --
+    stop_loss_pct, if set, closes the position the first bar whose Low
+    touches entry_price * (1 - stop_loss_pct/100), filling at min(that
+    bar's Open, the stop level) since a bar that gapped below the stop
+    never offered the stop price --
     checked ahead of that same bar's own exit signal, since a stop is a
     risk-management floor, not a strategy read on the bar's close.
 
@@ -190,7 +192,32 @@ def run_backtest(
             if stop_price is not None:
                 low = df.loc[date, "Low"]
                 if low <= stop_price:
-                    trades.append(Trade(entry_date, date, entry_price, stop_price, size))
+                    # FILL AT THE OPEN WHEN THE BAR GAPPED THROUGH THE STOP.
+                    #
+                    # This used to fill at stop_price whenever the Low
+                    # touched it, which hands every stop its exact price --
+                    # including on a bar that opened far below it. A stop is
+                    # an instruction to sell at the market once a level
+                    # trades, not a limit order resting at that level, so a
+                    # gap down fills at the open and the stop level is never
+                    # available.
+                    #
+                    # Measured on the 415-ticker 1d universe, holding a name
+                    # already up 20% over 60 bars behind an 8% stop: of the
+                    # bars that triggered, 17.8% opened BELOW the stop, and
+                    # those filled 2.21% worse than the stop on average,
+                    # 7.61% worse at p95 and 17.5% worse at the extreme.
+                    # Widening does not escape it -- 5% to 15% roughly halves
+                    # the trigger rate while the gap share holds near a
+                    # fifth. Bars moving more than 25% close-to-close were
+                    # excluded as corporate actions, so those are lower
+                    # bounds.
+                    #
+                    # min(), not a gap test: when the bar opens above the
+                    # stop and trades down through it intraday the stop IS
+                    # reachable, and that fill stays at stop_price.
+                    fill = min(df.loc[date, "Open"], stop_price)
+                    trades.append(Trade(entry_date, date, entry_price, fill, size))
                     in_position = False
                     continue
             if max_hold_bars is not None and bars_held >= max_hold_bars:

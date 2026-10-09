@@ -15,7 +15,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from smc_regime.backtest import Trade
-from smc_regime.portfolio import simulate
+from smc_regime.portfolio import simulate, simulate_seeds
 
 failures = []
 
@@ -67,8 +67,8 @@ check("4. a full book that doubles doubles the account",
 mixed_prices = {t: frame(up if t in "AB" else
                          [100, 100, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50]) for t in "ABCDE"}
 mixed_trades = {t: [tr(1, 2, 100.0, 200.0 if t in "AB" else 50.0)] for t in "ABCDE"}
-m5 = simulate(mixed_trades, mixed_prices, max_positions=5, capital=1000.0)
-m2 = simulate(mixed_trades, mixed_prices, max_positions=2, capital=1000.0)
+m5 = simulate(mixed_trades, mixed_prices, max_positions=5, capital=1000.0, selector="ticker")
+m2 = simulate(mixed_trades, mixed_prices, max_positions=2, capital=1000.0, selector="ticker")
 check("5. a slot is equity/max_positions, so fewer slots means larger positions",
       abs(m5.equity.iloc[-1] - 1100.0) < 1e-6 and abs(m2.equity.iloc[-1] - 2000.0) < 1e-6,
       f"  (5 slots {m5.equity.iloc[-1]:.0f} want 1100; 2 slots {m2.equity.iloc[-1]:.0f} want 2000)")
@@ -110,8 +110,8 @@ check("10. slippage reduces the result and is charged twice",
       f"  ({rs.equity.iloc[-1]:.2f} -> {rslip.equity.iloc[-1]:.2f})")
 
 # --- 11: the default selector is deterministic, random is not -------
-a = simulate(trades, prices, max_positions=2, capital=1000.0)
-b = simulate(trades, prices, max_positions=2, capital=1000.0)
+a = simulate(trades, prices, max_positions=2, capital=1000.0, selector="ticker")
+b = simulate(trades, prices, max_positions=2, capital=1000.0, selector="ticker")
 check("11. the ticker selector is reproducible",
       [t[0] for t in a.trades] == [t[0] for t in b.trades],
       f"  (picked {[t[0] for t in a.trades]})")
@@ -127,6 +127,36 @@ check("13. stats report CAGR, drawdown and exposure",
       all(k in s for k in ("cagr_pct", "max_drawdown_pct", "exposure_pct", "return_over_vol")))
 check("14. a monotonically rising account has no drawdown",
       abs(s["max_drawdown_pct"]) < 1e-9, f"  (maxDD {s['max_drawdown_pct']:.4f}%)")
+
+# --- 15-17: the default, and the seed-averaging entry point ----------
+# The default is random under a fixed seed: reproducible, but sampling the
+# universe rather than its alphabetical corner. Ticker order was the
+# default until it measured several points of CAGR WORSE than every random
+# seed on the real universe -- it concentrates the book instead of
+# sampling it. See the module docstring.
+import inspect
+
+d = inspect.signature(simulate).parameters
+check("15. the default selector is random under a fixed seed",
+      d["selector"].default == "random" and d["seed"].default == 0,
+      f"  ({d['selector'].default}, seed={d['seed'].default})")
+
+x = simulate(trades, prices, max_positions=2, capital=1000.0)
+y = simulate(trades, prices, max_positions=2, capital=1000.0)
+check("16. the default is still reproducible run to run",
+      [t[0] for t in x.trades] == [t[0] for t in y.trades] and
+      abs(x.equity.iloc[-1] - y.equity.iloc[-1]) < 1e-9)
+
+sweep = simulate_seeds(mixed_trades, mixed_prices, seeds=6, max_positions=2, capital=1000.0)
+sp = sweep.spread("cagr_pct")
+check("17. simulate_seeds runs every seed and keeps the spread",
+      len(sweep.runs) == 6 and sp["n"] == 6 and sp["min"] <= sp["mean"] <= sp["max"],
+      f"  (CAGR {sp['mean']:+.1f}% +/- {sp['sd']:.1f}, {sp['min']:+.1f} to {sp['max']:+.1f})")
+check("18. the spread is non-zero when selection actually matters",
+      sp["sd"] > 0, "  (mixed book: who gets the slot changes the result)")
+check("19. simulate_seeds ignores a passed selector rather than honouring it",
+      len(simulate_seeds(mixed_trades, mixed_prices, seeds=2, max_positions=2,
+                         capital=1000.0, selector="ticker", seed=99).runs) == 2)
 
 print()
 if failures:

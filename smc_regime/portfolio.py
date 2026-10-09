@@ -20,14 +20,31 @@ WHAT A PORTFOLIO ADDS THAT PER-TICKER CURVES CANNOT SHOW.
   CASH DRAG. Fewer signals than slots means idle capital. The per-trade
   mean never sees this; it averages only the bars where a trade existed.
 
-  SELECTION. When signals outnumber slots, something has to choose, and
-  that choice is an edge claim unless it is deliberately not one. The
-  default orders candidates by ticker symbol -- arbitrary, deterministic,
-  and carrying no information about which trade will work. `selector`
-  takes "random" with a seed so the sensitivity can be measured rather
-  than assumed, and the module reports across seeds rather than quoting
-  one. A rule like "take the lowest RSI" might well be better, but it
-  would be an unvalidated second strategy smuggled into the measurement.
+  SELECTION, AND IT DOMINATES THE ANSWER. When signals outnumber slots
+  something has to choose. On rsi2_prior_high across 415 names that is
+  not a detail: at 10 slots, 88.9% of signals are rejected, so the
+  selection rule decides most of the result.
+
+  AN EARLIER VERSION DEFAULTED TO TICKER ORDER, on the reasoning that an
+  alphabetical sort carries no information about which trade will work.
+  That reasoning was wrong and the measurement showed it: at 10 slots and
+  5bp per side, ticker order returned +17.59% CAGR while eight random
+  seeds returned +17.72% to +28.44%, mean +23.11%. EVERY seed beat it.
+  Alphabetical order is not neutral -- always preferring the earliest
+  symbols concentrates the book into a fixed subset of the universe
+  instead of sampling it, and that costs several points of CAGR.
+
+  So the default is now random under a fixed seed: reproducible, but
+  sampling the universe rather than one corner of it. One draw is still
+  only one draw -- the seed spread (sd 3.8pp) is WIDER than the entire
+  slippage sensitivity -- so a single simulate() call is not a usable
+  estimate of anything. Use simulate_seeds(), which is what reports a
+  mean and a spread.
+
+  "ticker" remains available for a deterministic walk when debugging, and
+  is documented as biased low rather than neutral. A rule like "take the
+  lowest RSI" might well be better than either, but it would be an
+  unvalidated second strategy smuggled into the measurement of the first.
 
   A REAL DRAWDOWN. Equity is marked to market every trading day on the
   open positions, so the drawdown is the account's, on the basis the
@@ -98,8 +115,8 @@ def simulate(
     max_positions: int = 10,
     capital: float = 100_000.0,
     slippage_pct: float = 0.0,
-    selector: str = "ticker",
-    seed: int | None = None,
+    selector: str = "random",
+    seed: int | None = 0,
 ) -> PortfolioResult:
     """Run one capital pool over `trades_by_ticker`.
 
@@ -108,10 +125,14 @@ def simulate(
     charged per fill, matching run_backtest's convention, so a round trip
     pays it twice.
 
-    `selector` decides who gets a slot when signals outnumber them:
-    "ticker" sorts by symbol (deterministic, uninformative), "random"
-    shuffles under `seed`. Trades already carrying a `size` below 1.0 --
-    from vol targeting -- keep it as a multiplier on the slot weight.
+    `selector` decides who gets a slot when signals outnumber them.
+    "random" under a fixed `seed` is the default: reproducible, and it
+    samples the universe. "ticker" sorts by symbol, which is deterministic
+    but measurably biased LOW -- see the module docstring. One seed is one
+    draw and the spread across seeds is large, so prefer simulate_seeds()
+    for any number you intend to quote. Trades already carrying a `size`
+    below 1.0 -- from vol targeting -- keep it as a multiplier on the slot
+    weight.
     """
     if selector not in ("ticker", "random"):
         raise ValueError(f"unknown selector {selector!r}")
@@ -181,6 +202,56 @@ def simulate(
     return PortfolioResult(equity=equity, taken=taken, rejected=rejected, trades=closed,
                            max_positions=max_positions,
                            stats=_stats(equity, invested_days))
+
+
+@dataclass
+class SeedSweep:
+    """simulate() repeated over seeds, with the spread kept rather than hidden.
+
+    A single run's CAGR is one draw from a distribution whose width is set
+    by which signals happened to win a slot. On rsi2_prior_high at 10 slots
+    that width (sd ~3.8pp) exceeds the whole effect of going from 0 to 10bp
+    of slippage, so a number quoted without it is not meaningful. `mean`
+    and `sd` are reported together for that reason, and `runs` is kept so a
+    caller can look at any individual draw.
+    """
+    runs: list
+    seeds: list
+
+    def spread(self, key: str = "cagr_pct") -> dict:
+        vals = [r.stats[key] for r in self.runs if key in r.stats]
+        if not vals:
+            return {}
+        arr = np.asarray(vals, float)
+        return {"mean": float(arr.mean()), "sd": float(arr.std(ddof=1)) if len(arr) > 1 else 0.0,
+                "min": float(arr.min()), "max": float(arr.max()), "n": len(arr)}
+
+    def __str__(self) -> str:
+        c, d = self.spread("cagr_pct"), self.spread("max_drawdown_pct")
+        rej = np.mean([r.rejection_rate for r in self.runs]) * 100
+        return (f"{c['n']} seeds: CAGR {c['mean']:+.2f}% +/- {c['sd']:.2f} "
+                f"(range {c['min']:+.2f} to {c['max']:+.2f})  "
+                f"maxDD {d['mean']:+.1f}% +/- {d['sd']:.1f}  rejected {rej:.1f}%")
+
+
+def simulate_seeds(
+    trades_by_ticker: dict[str, list],
+    prices: dict[str, pd.DataFrame],
+    seeds: int | list[int] = 8,
+    **kwargs,
+) -> SeedSweep:
+    """Run simulate() across several random tie-breaks and keep the spread.
+
+    This is the entry point for any figure that will be quoted. `seeds` is
+    a count (0..n-1) or an explicit list. `selector` is forced to "random"
+    -- averaging over a deterministic rule would just repeat it n times.
+    """
+    kwargs.pop("selector", None)
+    kwargs.pop("seed", None)
+    seed_list = list(range(seeds)) if isinstance(seeds, int) else list(seeds)
+    runs = [simulate(trades_by_ticker, prices, selector="random", seed=s, **kwargs)
+            for s in seed_list]
+    return SeedSweep(runs=runs, seeds=seed_list)
 
 
 def _price(prices: dict[str, pd.DataFrame], ticker: str, date: pd.Timestamp, pos: dict) -> float:

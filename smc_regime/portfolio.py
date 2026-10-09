@@ -74,6 +74,11 @@ class PortfolioResult:
     rejected: int              # signals dropped for want of a slot
     trades: list               # (ticker, entry, exit, weight, return_pct)
     max_positions: int
+    # Signals DECLINED on quality by score_floor, with a slot standing free.
+    # Kept apart from `rejected` on purpose: one is the book being full, the
+    # other is the book choosing cash, and averaging them into a single
+    # "rejection rate" would hide exactly the behaviour a floor is for.
+    declined: int = 0
     stats: dict = field(default_factory=dict)
 
     def __str__(self) -> str:
@@ -81,7 +86,9 @@ class PortfolioResult:
         return (f"slots={self.max_positions} taken={self.taken} rejected={self.rejected} "
                 f"({self.rejection_rate*100:.1f}%) CAGR={s.get('cagr_pct', float('nan')):+.2f}% "
                 f"maxDD={s.get('max_drawdown_pct', float('nan')):+.1f}% "
-                f"invested={s.get('exposure_pct', float('nan')):.1f}%")
+                f"declined={self.declined} "
+                f"slots_filled={s.get('slot_fill_pct', float('nan')):.1f}% "
+                f"deployed={s.get('capital_deployed_pct', float('nan')):.1f}%")
 
     @property
     def rejection_rate(self) -> float:
@@ -89,7 +96,8 @@ class PortfolioResult:
         return self.rejected / total if total else 0.0
 
 
-def _stats(equity: pd.Series, invested_days: int) -> dict:
+def _stats(equity: pd.Series, invested_days: int, slot_fill_sum: float = 0.0,
+           deployed_sum: float = 0.0) -> dict:
     if len(equity) < 2:
         return {}
     years = (equity.index[-1] - equity.index[0]).days / 365.25
@@ -100,7 +108,14 @@ def _stats(equity: pd.Series, invested_days: int) -> dict:
         "cagr_pct": (total ** (1 / years) - 1) * 100 if years > 0 else float("nan"),
         "total_return_pct": (total - 1) * 100,
         "max_drawdown_pct": float((equity / peak - 1).min() * 100),
+        # Share of days holding ANYTHING. Near-useless on a wide universe:
+        # it sat at 99.9% because something always fires. Kept for continuity.
         "exposure_pct": invested_days / len(equity) * 100,
+        # Mean share of SLOTS filled, and mean share of CAPITAL at risk. These
+        # are the numbers that say whether the book is really an overlay or a
+        # closet index fund -- a book 99.9% "exposed" can still be half cash.
+        "slot_fill_pct": slot_fill_sum / len(equity) * 100,
+        "capital_deployed_pct": deployed_sum / len(equity) * 100,
         # Annualised, cash-included. Deliberately not called Sharpe: no
         # risk-free rate is subtracted, so it is return over volatility and
         # nothing more.
@@ -117,6 +132,8 @@ def simulate(
     slippage_pct: float = 0.0,
     selector: str = "random",
     seed: int | None = 0,
+    scores: dict | None = None,
+    score_floor: float | None = None,
 ) -> PortfolioResult:
     """Run one capital pool over `trades_by_ticker`.
 
@@ -134,8 +151,22 @@ def simulate(
     below 1.0 -- from vol targeting -- keep it as a multiplier on the slot
     weight.
     """
-    if selector not in ("ticker", "random"):
+    if selector not in ("ticker", "random", "ranked"):
         raise ValueError(f"unknown selector {selector!r}")
+    if selector == "ranked" and not scores:
+        raise ValueError("selector='ranked' needs `scores`")
+    # A floor without a score to measure against would silently pass
+    # everything, which looks like a working filter and is not one.
+    if score_floor is not None and not scores:
+        raise ValueError("score_floor needs `scores`")
+
+    def _score(ticker, trade) -> float:
+        """Higher is better. Missing means unrankable -- sorted last and,
+        under a floor, declined, because taking a slot on a signal whose
+        quality is unknown is the thing the floor exists to prevent."""
+        if not scores:
+            return 0.0
+        return scores.get((ticker, trade.entry_date), float("-inf"))
     rng = np.random.default_rng(seed)
 
     # one shared calendar; a ticker absent on a date simply has no bar
@@ -152,7 +183,8 @@ def simulate(
     cash = capital
     held: dict[str, dict] = {}
     equity_curve, invested_days = [], 0
-    taken = rejected = 0
+    taken = rejected = declined = 0
+    slot_fill_sum = deployed_sum = 0.0
     closed = []
 
     for date in calendar:
@@ -171,11 +203,18 @@ def simulate(
             ordered = sorted(candidates, key=lambda c: c[0])
             if selector == "random":
                 ordered = [ordered[i] for i in rng.permutation(len(ordered))]
+            elif selector == "ranked":
+                # Best score first; ties broken by symbol so the result is
+                # reproducible without a seed.
+                ordered = sorted(ordered, key=lambda c: (-_score(*c), c[0]))
             for ticker, t in ordered:
                 if ticker in held:
                     continue          # engine is single-position per ticker
                 if free <= 0:
                     rejected += 1
+                    continue
+                if score_floor is not None and _score(ticker, t) < score_floor:
+                    declined += 1
                     continue
                 slot = (cash + sum(p["shares"] * _price(prices, tk, date, p)
                                    for tk, p in held.items())) / max_positions
@@ -194,14 +233,17 @@ def simulate(
                 free -= 1
 
         mark = sum(p["shares"] * _price(prices, tk, date, p) for tk, p in held.items())
-        equity_curve.append(cash + mark)
+        total = cash + mark
+        equity_curve.append(total)
         if held:
             invested_days += 1
+        slot_fill_sum += len(held) / max_positions
+        deployed_sum += (mark / total) if total > 0 else 0.0
 
     equity = pd.Series(equity_curve, index=calendar, name="equity")
     return PortfolioResult(equity=equity, taken=taken, rejected=rejected, trades=closed,
-                           max_positions=max_positions,
-                           stats=_stats(equity, invested_days))
+                           max_positions=max_positions, declined=declined,
+                           stats=_stats(equity, invested_days, slot_fill_sum, deployed_sum))
 
 
 @dataclass

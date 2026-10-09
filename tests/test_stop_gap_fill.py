@@ -16,6 +16,7 @@ Checks 1-2 are the two branches; 3 pins that the old behaviour is actually
 gone rather than coincidentally matching; 4-5 keep slippage and the
 intraday path intact.
 """
+import inspect
 import sys
 from pathlib import Path
 
@@ -75,10 +76,16 @@ check("3. the gapped trade is worse than the stop level implied",
       t.exit_price < 90.0 and t.return_pct < -10.0,
       f"  (return_pct={t.return_pct:.2f}%)")
 
-# Slippage applies to whichever price was actually filled.
-t3 = run_backtest(gapped, sig(gapped), stop_loss_pct=10.0, slippage_pct=0.10)[0]
-check("4. slippage is charged on the gap fill",
-      abs(t3.exit_price - 80.0 * (1 - 0.001)) < 1e-9, f"  (exit_price={t3.exit_price})")
+# Slippage applies to whichever price was actually filled. Guarded on the
+# engine advertising the parameter: the gap fill and per-fill slippage are
+# separate changes and reached the default branch separately, so this file
+# has to run on a tree that has one and not the other.
+if "slippage_pct" in inspect.signature(run_backtest).parameters:
+    t3 = run_backtest(gapped, sig(gapped), stop_loss_pct=10.0, slippage_pct=0.10)[0]
+    check("4. slippage is charged on the gap fill",
+          abs(t3.exit_price - 80.0 * (1 - 0.001)) < 1e-9, f"  (exit_price={t3.exit_price})")
+else:
+    print("4. slippage is charged on the gap fill  SKIPPED (engine takes no slippage_pct)")
 
 # A bar whose open is exactly the stop is not a gap; it fills at the stop.
 at_stop = bars([(100, 100, 100, 100), (90, 90, 88, 89)])

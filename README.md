@@ -118,6 +118,51 @@ regime/direction) to sector-level stats to the full-population pooled stats:
 python -m smc_regime.recommend_cli AAPL
 ```
 
+### Running a strategy as one account, in and out of sample
+
+Every other measurement here is per-trade or per-ticker. Neither is
+tradeable: a per-trade edge says nothing about how much of it a book with a
+finite number of slots can actually capture, and a per-ticker equity curve
+quietly assumes unlimited capital. `smc_regime.portfolio_cli` runs the
+strategy as ONE account against the index it could have bought instead.
+
+```bash
+python -m smc_regime.portfolio_cli --strategy rsi2_prior_high
+python -m smc_regime.portfolio_cli --strategy rsi2_prior_high --oos
+```
+
+`--oos` splits at 2024-01-01, selects a configuration on the in-sample
+window ONLY, and then evaluates that single winner on the holdout with
+nothing re-picked. Trades straddling the split are dropped from both
+windows (`tests/test_oos_split.py`).
+
+What it found, and it is the most important negative result in this repo:
+RSI(2)'s per-trade edge is real and survives every test of its own kind
+(+0.411% excess, t=8.87 ticker-clustered, holding ex-2020 and across 82% of
+tickers, break-even at 40.8bp per side) -- and does NOT survive being run
+as an account. Out of sample at 5bp per side it returned +12.04% CAGR
+against SPY's +21.07%, with a deeper drawdown (-27.1% vs -18.76%): lower
+return AND more risk, in a window it was not selected on. Three reasons,
+all visible only at the portfolio level:
+
+- **Rejection runs 64-89%.** The strategy fires far more signals than a
+  book can hold, so the per-trade statistics describe a population only a
+  fraction of which is actionable.
+- **The book ends up 99.9% invested.** On SPY alone RSI(2) earned 83% of
+  the return with 28% exposure. Across 415 names there is always a signal,
+  so that advantage disappears and what remains is a long equity portfolio
+  with a thin entry overlay -- carrying the same market risk as the index.
+- **Diversification is the one unambiguous win.** 10 -> 40 slots cut
+  drawdown -38.8% -> -33.7% and cut seed dispersion +/-4.07 -> +/-0.80 for
+  5pp of mean CAGR. Below ~20 slots the answer is dominated by an arbitrary
+  tie-break rather than by the strategy, which is why every quoted figure
+  is averaged over 8 random tie-breaks with its spread shown.
+
+The module docstring carries the full result tables and the selection
+protocol, including the pre-registered fallback rule that fired (all six
+candidates failed the drawdown constraint) and why it was honoured as
+written rather than rewritten once the candidates were visible.
+
 ### Pine Script: viewing the live regime on a TradingView chart
 
 `pinescript/smc_regime_classifier.pine` is a hand-ported mirror of

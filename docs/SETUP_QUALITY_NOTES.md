@@ -635,6 +635,92 @@ risk**: a long option caps loss at the premium with no gap risk. That is
 the tail control this project keeps measuring as the thing that works, and
 it does not require IV to cooperate.
 
+## Covered calls written into a drawdown
+
+`analysis/coveredcall.py`, 734,187 ticker-bars. The idea: a position is
+down, you do not want to sell, so you write a call to blunt the loss. The
+tension is that in a drawdown you are waiting for a recovery and a covered
+call sells exactly that recovery.
+
+Premium is Black-Scholes priced off each name's own TRAILING 20-day
+realised vol times an implied-over-realised multiplier. Using trailing
+realised vol matters: vol rises in drawdowns, so the premium rises exactly
+when the call is written, which is the real behaviour.
+
+Writing +5% calls, 21-bar hold:
+
+| drawdown when written | hold p10 | CC p10 | hold p25 | CC p25 | hold <0% | CC <0% |
+|---|---|---|---|---|---|---|
+| none (> -5%) | -8.99 | -7.05 | -3.68 | -2.19 | 43.4% | 35.6% |
+| mild -5..-15% | -10.93 | -8.18 | -4.64 | -2.40 | 43.9% | 34.4% |
+| deep -15..-30% | -14.61 | -9.81 | -5.96 | -1.92 | 42.6% | 30.2% |
+| **severe < -30%** | **-21.90** | **-13.14** | **-9.82** | **-1.84** | 43.7% | **28.2%** |
+
+**IT WORKS BETTER THE DEEPER THE DRAWDOWN**, which is the opposite of most
+things tested here, and the mechanism is simple: vol rises with the
+drawdown so the premium collected rises with it -- 9.07% of spot at severe
+against 1.89% at none. At severe drawdown p10 improves 8.8pp and p25 by
+8.0pp.
+
+**BUT READ WHAT IS ACTUALLY HAPPENING.** The premium shifts the whole
+distribution up ~9pp and caps it at +5%. The improvement in "share ending
+negative" (43.7% -> 28.2%) is mostly that level shift: any outcome between
+-9.07% and 0 now prints positive. That is the distribution moving, not
+risk being removed. It is paid for by surrendering everything above the
+strike, worth ~9.4pp in expectation at severe drawdown -- which is why the
+mean barely moves. Options are priced to make this roughly fair.
+
+### The mean effect is the volatility risk premium, and it was assumed
+
+Mean delta vs just holding, by implied-over-realised multiplier:
+
+| IV mult | strike | deep DD | severe DD |
+|---|---|---|---|
+| 1.00 | +5% | -0.740 | -1.629 |
+| 1.00 | +10% | -0.405 | -1.157 |
+| 1.05 | +5% | -0.468 | -1.181 |
+| **1.15** | +5% | **+0.078** | **-0.301** |
+| 1.25 | +10% | +0.812 | +0.957 |
+
+**The sign flips around 1.10.** Priced at realised vol with no risk
+premium, covered calls COST money on the mean. Every positive figure in
+the first table is the VRP, which this work assumed at 1.15 rather than
+measured. The VRP is real and well documented, but its magnitude is an
+input here, and it is compensation for being short volatility -- you lose
+in the crashes where the protection is most wanted.
+
+**What survives the assumption**: the downside improvement, because that is
+the premium level-shift and happens at any multiplier. The mean effect
+does not survive it.
+
+So: a risk transfer at roughly fair value, not an edge. The same shape as
+stops, diversification and the cash floor -- and like those, genuinely
+useful to anyone who values the smoother path, which is what the question
+was actually asking.
+
+### Not modelled
+
+American early assignment (likely around dividends, which would cut the
+position), option transaction costs on a monthly roll, and the overlapping
+windows -- every bar is an observation, so the effective sample is far
+smaller than 734,187. Survivorship applies as everywhere else.
+
+## A note on 40-50 position portfolios
+
+The portfolio work found seed dispersion falling from +-4.07pp to +-0.80pp
+going 10 -> 40 slots. That is not a realistic retail book, and it cuts at
+the usefulness of the finding. At 8-10 positions the outcome is dominated
+by WHICH names were drawn rather than by the strategy, which is the regime
+where a working system and a lucky one cannot be told apart.
+
+Two things follow. Concentration does not lower expected return, it raises
+variance -- a choice rather than an error for someone who can hold through
+it and is not trying to prove a method works. And since the 40-slot book
+converged on the index anyway (+0.45pp, -14.9% dd vs SPY's -14.1%), the
+practical form is to take diversification from an index and spend the
+effort on the levers that do not need 40 names: costs, sizing, tail
+control.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

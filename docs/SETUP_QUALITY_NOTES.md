@@ -8,30 +8,48 @@ below rather than from an opinion about which indicator matters.
 
 ## The one result that should shape everything else
 
-**The grade works at two weeks, and only at two weeks.**
+**The grade ranks at two weeks and at one month. It does not rank at one
+week.**
 
-| horizon | A | B | C | D | A−D | ordering | A bucket n |
+Measured two ways, because the first way misled me. Bucket means with the
+report's monotonic-ordering flag:
+
+| horizon | A | B | C | D | A−D | ordering flag | A bucket n |
 |---|---|---|---|---|---|---|---|
-| 1w | −0.10 | −0.26 | −0.49 | −0.40 | +0.30 | **broken** (D > C) | 607 |
-| 2w | **+0.38** | +0.03 | −1.23 | −1.51 | **+1.89** | **holds** | 420 |
-| 1m | −1.59 | −0.82 | −2.24 | −3.01 | +1.42 | **broken** (B > A) | 89 |
-| 3m | — | — | — | — | — | not matured | 0 |
+| 1w | −0.10 | −0.26 | −0.49 | −0.40 | +0.30 | broken (D > C) | 607 |
+| 2w | **+0.38** | +0.03 | −1.23 | −1.51 | **+1.89** | holds | 420 |
+| 1m | −1.59 | −0.82 | −2.24 | −3.01 | +1.42 | broken (B > A) | 89 |
 
-At 2 weeks the ordering is clean and monotonic, the spread is widest, and
-the win rate runs 50.2 / 44.3 / 33.5 / 31.9 — a 18pp hit-rate gap from A to
-D. At 1 week the ordering breaks and the spread collapses to +0.30%, which
-is inside the noise. At 1 month it breaks again, but the A bucket is only
-89 rows, so that is "not yet judgeable" rather than "disproven".
+And by rank correlation between the raw score and the forward return,
+computed per capture date (`smc_regime/grade_metrics.py`):
 
-Two things follow immediately.
+| horizon | pooled IC | per-date IC | dates positive |
+|---|---|---|---|
+| 1w | +0.039 | +0.044 ± 0.098 | 11/19 (58%) |
+| 2w | **+0.113** | +0.118 ± 0.086 | **13/14 (93%)** |
+| 1m | **+0.103** | +0.113 ± 0.045 | **5/5 (100%)** |
+
+**The two disagree at one month, and the ordering flag is the one that is
+wrong.** It trips on a single A-vs-B inversion across an 89-row A bucket,
+while the rank correlation — which uses all 2,055 matured rows rather than
+four bucket means — is +0.103 and positive on every capture date measured.
+The signal at 1m is about as strong as at 2w. An earlier version of this
+note said the grade "works at two weeks and only there"; that was reading a
+brittle statistic.
+
+1w is the genuinely weak horizon on both measures: the spread is +0.30%,
+inside the noise, and the IC is positive on barely half the dates.
+
+Two things follow.
 
 1. **The page should state the horizon.** Nothing on the dashboard says
-   what a grade predicts. It predicts a roughly two-week hold. A reader
-   taking an A-graded setup for three days is using a number that has been
-   measured not to work over three days.
-2. **Do not revise weights on the 1-month table yet.** n=89 on the bucket
-   that matters. Re-read it once 3m has matured — the report already
-   reports pending rather than zero, so this is just a matter of waiting.
+   what a grade predicts. It predicts a hold of roughly two weeks to a
+   month. A reader taking an A-graded setup for three days is using a
+   number measured not to work over three days.
+2. **Do not track the ordering flag.** One noisy bucket flips it, so it
+   would flicker between runs while the underlying signal sat still. Track
+   the per-date IC, which degrades gracefully and has a dispersion you can
+   reason about. This is now `grade_metrics`.
 
 ## Grades rank probability better than magnitude
 
@@ -143,8 +161,8 @@ next, and the one effect that survived was +1.57pp. Eight weights fitted to
 9,940 rows drawn from 24 dates and one market regime would overfit
 comprehensively and look excellent doing it.
 
-Test revisions ONE AT A TIME against the 2w ordering and spread, keep the
-horizon and the report fixed while doing it, and prefer a change that is
+Test revisions ONE AT A TIME against the 2w and 1m per-date IC, keep the
+horizons and the metric fixed while doing it, and prefer a change that is
 justified mechanically (valuation cannot predict two weeks) over one that
 is justified by a better backtest number.
 

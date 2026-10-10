@@ -145,9 +145,27 @@ this (a 2% stop on ema_cross cut tickers past -50% from 20.7% to 0.2% for
 universe and this signal family can be made meaningfully less risky and
 cannot be made to out-return the index.
 
+COST ARITHMETIC, because an earlier version of this docstring got it
+wrong by a factor of 2.2. A basis point is 0.01%; "per side" means charged
+on each fill, so a round trip pays twice. Measured over 37,037
+rsi2_prior_high trades: gross +0.7590% per trade against a same-duration
+same-ticker baseline of +0.3848%, so the excess is +0.3742% = 37.4bp. That
+is the ROUND-TRIP break-even; per side it is 18.7bp. The earlier figure,
+"40.8bp per side", was a round-trip number carrying a per-side label.
+
+Mean hold is 4.1 bars, which is the part that decides it: roughly 60 round
+trips per slot per year, so 5bp per side is ~6% of annual drag and 10bp is
+~12%. A 37bp edge does not survive being paid sixty times. This is why the
+walk-forward beats SPY at 0bp, goes mixed at 5bp and loses in every fold at
+10bp -- results that were always inconsistent with a 40.8bp tolerance.
+
+Note the benchmark matters: 18.7bp is break-even against holding the same
+name for the same bars. Against buying SPY it is lower, because that
+baseline supplies market beta with no turnover at all.
+
 The per-trade edge is real and survives every test of its own kind:
 +0.411% excess, t=8.87 ticker-clustered, holding ex-2020 and across 82% of
-tickers, break-even at 40.8bp per side. It does not survive being run as
+tickers, break-even at 18.7bp per side. It does not survive being run as
 an account against the index in a window it was not selected on. Those are
 consistent: against CASH the overlay pays, against SPY it pays roughly its
 own transaction costs, because the book carries the same market risk

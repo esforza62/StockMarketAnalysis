@@ -447,6 +447,51 @@ property that has been measured not to exist.
   valuation and the volume signing -- and it is the best evidenced of the
   three for the specific claim it makes.
 
+## Correction: the break-even cost figure was wrong by 2.2x
+
+Recorded because it was quoted repeatedly before being checked, and
+because the error has a shape worth recognising.
+
+The claim was "break-even at 40.8bp per side". A basis point is 0.01%, and
+"per side" means charged on EACH fill, so a round trip pays twice and
+break-even per side is half the per-trade excess. Recomputed over 37,037
+rsi2_prior_high trades against a same-ticker same-duration baseline:
+
+    gross per trade    +0.7590%
+    baseline           +0.3848%
+    excess             +0.3742%  = 37.4bp
+    break-even          37.4bp round trip  =  18.7bp PER SIDE
+
+So 40.8bp was a round-trip number wearing a per-side label. The tell was
+available without recomputing anything: 40.8bp is within rounding of the
++0.411% excess that was quoted beside it, and an excess cannot equal its
+own per-side break-even.
+
+**Turnover is what actually decides it, and it was never mentioned.** Mean
+hold is 4.1 bars -- roughly 60 round trips per slot per year:
+
+    cost/side   net per trade   annual drag per slot
+          0bp        +0.3742%                  0.0%
+          5bp        +0.2742%                  6.1%
+         10bp        +0.1742%                 12.2%
+         20bp        -0.0258%                 24.4%
+
+A 37bp edge does not survive being paid sixty times. This reconciles with
+the walk-forward -- beats SPY at 0bp, mixed at 5bp, loses every fold at
+10bp -- which had sat in the SAME docstring as the 40.8bp claim without the
+inconsistency being noticed.
+
+`rsi2` is slower (7.9-bar hold, ~32 round trips/year) and its excess is
+smaller: 25.3bp round trip, 12.7bp per side.
+
+And the benchmark matters as much as the arithmetic. 18.7bp is break-even
+against holding the same name for the same bars. Against simply buying
+SPY it is lower, because that baseline supplies market beta with no
+turnover at all.
+
+Derivation lives in `analysis/breakeven.py` so the number is checkable
+rather than quoted.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

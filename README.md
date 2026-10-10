@@ -139,7 +139,7 @@ windows (`tests/test_oos_split.py`).
 What it found, and it is the most important negative result in this repo:
 RSI(2)'s per-trade edge is real and survives every test of its own kind
 (+0.411% excess, t=8.87 ticker-clustered, holding ex-2020 and across 82% of
-tickers, break-even at 40.8bp per side) -- and does NOT survive being run
+tickers, break-even at 18.7bp per side) -- and does NOT survive being run
 as an account. Out of sample at 5bp per side it returned +12.04% CAGR
 against SPY's +21.07%, with a deeper drawdown (-27.1% vs -18.76%): lower
 return AND more risk, in a window it was not selected on. Three reasons,

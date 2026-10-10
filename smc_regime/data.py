@@ -93,7 +93,9 @@ def _fetch_chunk(ticker: str, interval: str, start: pd.Timestamp, end: pd.Timest
     if isinstance(payload, dict):
         raise ValueError(f"Tiingo error for {ticker!r}: {payload.get('detail', payload)}")
     if not payload:
-        return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume"])
+        return pd.DataFrame(
+            {c: pd.Series(dtype="float64")
+             for c in ("Open", "High", "Low", "Close", "Volume")})
 
     df = pd.DataFrame(payload)
     df["date"] = pd.to_datetime(df["date"])
@@ -115,7 +117,15 @@ def _fetch_chunk(ticker: str, interval: str, start: pd.Timestamp, end: pd.Timest
     else:
         df = df.rename(columns={"open": "Open", "high": "High", "low": "Low", "close": "Close", "volume": "Volume"})
 
-    return df[["Open", "High", "Low", "Close", "Volume"]].dropna()
+    out = df[["Open", "High", "Low", "Close", "Volume"]]
+    # COERCE, do not assume. pd.DataFrame(payload) types each column from
+    # what the JSON happened to contain: one null or one stringified number
+    # in a single bar makes the whole column object dtype, and it then
+    # reaches strategies and indicators as object. Most numeric operations
+    # tolerate that silently; a groupby reduction does not, which is how a
+    # whole nightly run died on one ticker in one interval.
+    out = out.apply(pd.to_numeric, errors="coerce")
+    return out.dropna()
 
 
 def _resample_weekly(df: pd.DataFrame) -> pd.DataFrame:

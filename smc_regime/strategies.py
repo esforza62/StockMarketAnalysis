@@ -376,6 +376,30 @@ def rsi_dual_hma_trend(
     return pd.DataFrame({"entry": entry.fillna(False), "exit": exit_.fillna(False)})
 
 
+def _numeric_ohlc(df: pd.DataFrame) -> pd.DataFrame:
+    """Return `df` with OHLCV guaranteed numeric, copying only when it is not.
+
+    data.fetch_ohlcv coerces at the source, so in the normal path this is a
+    dtype check and nothing more. It exists because the failure mode is so
+    asymmetric: one null in one bar of one ticker's JSON makes a whole
+    column object dtype, most numeric operations limp along silently, and
+    the few that refuse -- groupby reductions, comparisons against the None
+    that object columns admit -- abort the caller. On 2026-10-10 that cost
+    a three-hour nightly run, twelve minutes in, after the 1d interval had
+    already completed, for every one of 415 tickers.
+
+    A strategy handed a frame it cannot read should yield no signal, not
+    take down the run.
+    """
+    cols = [c for c in ("Open", "High", "Low", "Close", "Volume") if c in df.columns]
+    if all(pd.api.types.is_numeric_dtype(df[c]) for c in cols):
+        return df
+    out = df.copy()
+    for c in cols:
+        out[c] = pd.to_numeric(out[c], errors="coerce")
+    return out
+
+
 def _swing_failure(
     df: pd.DataFrame,
     pivot_left: int,
@@ -412,6 +436,7 @@ def _swing_failure(
     the sweep and the reclaim on one bar (the classic SFP candle), higher
     values let the reclaim develop over the next few bars.
     """
+    df = _numeric_ohlc(df)
     swing_low = ind.swing_low(df, pivot_left, pivot_right)
     swing_high = ind.swing_high(df, pivot_left, pivot_right)
     low, close = df["Low"], df["Close"]
@@ -534,6 +559,7 @@ def sweep_outside_reversal(
     exists to answer -- this pools every regime together, which is exactly
     the averaging that harness was built to avoid.
     """
+    df = _numeric_ohlc(df)
     signals = pat.reversal_signals(
         df,
         wick_body_mult=wick_body_mult,

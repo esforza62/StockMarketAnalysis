@@ -150,6 +150,112 @@ problem: a one-letter output cannot carry "87.5 and 87.4 are the same
 setup". Reporting a percentile rank alongside the letter would fix the
 underlying issue rather than annotate it.
 
+## Measured: which component earns its weight
+
+Two measurements, 2026-10-10. Neither is conclusive and they partly
+disagree, which is the main thing to carry forward.
+
+### Standalone IC of each deployed component (grade history, 14 dates @ 2w)
+
+| component | weight | 2w IC | hit | 1m IC | hit |
+|---|---|---|---|---|---|
+| trend_structure | 20 | **+0.143** | 100% | **+0.127** | 100% |
+| macd | 15 | +0.113 | 86% | +0.035 | 60% |
+| alignment | 10 | +0.052 | 79% | +0.033 | 60% |
+| volume | 15 | +0.024 | 43% | +0.018 | 60% |
+| streak | 10 | +0.012 | 50% | **−0.073** | 0% |
+| sector_industry | 5 | −0.056 | 36% | +0.079 | 100% |
+| rsi | 15 | **−0.066** | 29% | +0.001 | 40% |
+| valuation | 10 | **−0.131** | 11% | — | — |
+| *whole grade* | 100 | +0.118 | 93% | +0.113 | 100% |
+
+**14 overlapping dates is 1–2 independent observations.** A "100% hit rate"
+on that is close to meaningless. Only trend_structure's adjusted t (+2.6)
+approaches significance and it would not survive a multiple-comparison
+correction across eight components.
+
+### Incremental: does the grade rank better WITHOUT a component?
+
+| variant | pts | 2w IC | Δ | 1m IC |
+|---|---|---|---|---|
+| full grade | 100 | +0.1180 | — | +0.1123 |
+| drop volume | 85 | +0.1200 | +0.002 | +0.1138 |
+| drop streak | 90 | +0.1219 | +0.004 | +0.1413 |
+| drop rsi | 85 | +0.1259 | +0.008 | +0.0973 |
+| drop sector_industry | 95 | +0.1270 | +0.009 | +0.0970 |
+| drop valuation | 90 | +0.1427 | +0.025 | +0.1123 |
+| price-only (drop sec_ind+val) | 85 | +0.1506 | +0.033 | +0.0970 |
+| trend+macd+alignment only | 45 | +0.1700 | +0.052 | +0.1183 |
+
+**Every removal improves the 2w IC, and that is a reason for suspicion
+rather than a mandate to delete half the scale.** Summing non-predictive
+components adds variance to the composite, so dropping any noise term
+raises IC mechanically whether or not the term is harmful. This table
+cannot separate dead weight from active harm. The horizons also disagree —
+dropping rsi helps at 2w and hurts at 1m; dropping streak is the best 1m
+variant and does nothing at 2w — which is what fitting noise looks like.
+
+**Do not adopt the 45-point variant.** Selecting the best of eleven
+variants on 1–2 effective observations is the exact failure the portfolio
+work in this repo spent a session documenting.
+
+### The one change with evidence from two directions
+
+**Valuation.** Standalone IC −0.131, positive on 11% of dates; the largest
+single incremental gain (+0.025); and an a priori reason that needs no
+statistics — a forward P/E cannot plausibly rank a two-week return, and the
+backfill already neutralises it for 21% of history. Three independent
+arguments, one direction. This is the safe subtraction.
+
+### Volume: the signed/unsigned finding
+
+Measured on the full 767k-row panel (1,885 dates), not the 24-date history,
+so this one IS well powered:
+
+| rung | 2w | 1m |
+|---|---|---|
+| 5v50 *(deployed)* | +0.0086 | +0.0082 |
+| 30v50 | −0.0014 | −0.0033 |
+| 10v30 | +0.0087 | +0.0076 |
+| 3v10 | +0.0004 | +0.0025 |
+| cascade (all three building) | +0.0037 | +0.0037 |
+| **any version signed by price direction** | **−0.004 … +0.001** | **negative** |
+
+Three results. A nested ladder (30v50 / 10v30 / 3v10) adds nothing: only
+the middle rung works and it merely ties the 5v50 already deployed, while
+both ends are indistinguishable from zero. Combining rungs dilutes — the
+cascade (+0.0037) scores below its own best rung (+0.0087), the same
+averaging-away-the-signal result the multi-timeframe trend rungs showed.
+And **signing volume by price direction turns a positive signal negative**,
+on every rung and both timeframes.
+
+That last one is actionable, because the deployed component scores exactly
+that product — "advance on heavy volume → conviction". Scoring volume
+UNSIGNED is a cheap, well-powered change. Weekly volume carries nothing at
+all (best rung +0.005, several negative), unlike weekly *trend*.
+
+### Trend structure: the two measurements disagree 14-fold
+
+Deployed component over 14 dates: +0.143. A price-only reconstruction of
+the same idea over 1,944 dates and 7 years: +0.010. The gap is sample
+(six weeks vs seven years) and fidelity (real scorer vs approximation), and
+nothing here resolves it. Treat both as provisional.
+
+On the same 7-year panel, of eight richer trend features only the WEEKLY
+EMA stack beat the current 50/200 read (+0.0135/+0.0158 vs +0.0102/+0.0099).
+Swing structure (HH/HL vs LL/LH) measured +0.0018 and +0.0000 — the weakest
+of the eight, and the strict consecutive-run variant was barely better.
+Rung aggregation again scored below its best single rung, though strict
+unanimity beat a graded count.
+
+### A detail worth fixing while in here
+
+Components are stored rounded to 1dp while `total_points` is rounded from
+the unrounded sum, so summing the stored components differs from the stored
+total by up to 0.2 points on 41% of rows. Harmless for the IC, but adjacent
+A-band scores differ by under 0.4 points, so that jitter does reorder names
+near the cuts — the same tight-bunching the `~A` tags exist for.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

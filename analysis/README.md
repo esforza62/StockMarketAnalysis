@@ -43,3 +43,23 @@ pickle the dict. Note that Yahoo's adjusted closes differ run to run in
 about the 7th significant figure, so a refetch moves every figure
 slightly -- that is fetch noise, not a discrepancy. The committed CSVs
 were produced on bars through 2026-09-25.
+
+## Grade-component measurement
+
+| script | what it answers |
+|---|---|
+| `trendfeat.py` | do richer trend reads (EMA stack, HH/HL swing structure, multi-timeframe agreement) rank better than the current 50/200 read |
+| `compvol.py` | which grade component earns its weight, and does volume read better as a nested ladder (30v50 / 10v30 / 3v10) across 1d and 1wk |
+| `incr.py` | does the grade rank BETTER without a given component |
+
+Findings are in `docs/SETUP_QUALITY_NOTES.md`. Headlines: only the weekly
+EMA stack beat the current trend read, swing structure measured ~zero, rung
+aggregation scored below its best single rung in every test, and signing
+volume by price direction turns a positive signal negative. `incr.py` shows
+every removal improving the 2w IC, which is a warning about the metric
+rather than a mandate — dropping any non-predictive term raises a composite
+IC mechanically.
+
+`trendfeat.py` and `compvol.py` read `universe_1d.pkl` from the cache
+directory (see above); `incr.py` and part A of `compvol.py` read the
+committed grade history and need no cache.

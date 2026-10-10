@@ -92,3 +92,25 @@ The grade does not improve on the base rate (AUC 0.4903 pooled, below
 chance), and `streak` -- 10 points awarded for a long-held regime on the
 premise it is more settled -- scores below 0.5 in BOTH regimes, which
 falsifies the component's stated rationale on 750k bars.
+
+## Exit policies, brackets, options
+
+| script | what it answers |
+|---|---|
+| `exitpol.py` | trailing vs fixed stops, breakeven stops, trimming, averaging down -- 61,795 trades replayed bar by bar |
+| `bracket.py` / `bracket2.py` | fixed +20%/-10% and +10%/-5% brackets on the rsi2 variants |
+| `bracket_ctrl.py` | the random-entry control the bracket result needs |
+
+Headlines: trailing stops are WORSE than fixed at every width (a 5% trail
+keeps 13.4% of the right tail); breakeven stops are nearly free (be30
+costs 0.12pp, keeps 96.2%); averaging down lifts the mean and roughly
+doubles the tail (-98% becomes -197% in capital terms, and 74% of the
+trades it adds to still lose). Fixed brackets fail on scale -- rsi2's edge
+is 0.4-1.0% per trade and a 10% target is ten times that, so the bracket
+only resolves by holding long enough to become a market bet, which the
+random-entry control confirms.
+
+Both bracket scripts replay a FIXED trade list, so PURE mode counts
+overlapping positions the engine could never hold -- only ~40% of signals
+are takeable. De-overlapping barely moves the per-trade mean, but the
+trade counts in those tables are not tradeable counts.

@@ -492,6 +492,149 @@ turnover at all.
 Derivation lives in `analysis/breakeven.py` so the number is checkable
 rather than quoted.
 
+## Exit policies: trailing stops, trimming, averaging down
+
+61,795 trades across five trend strategies (ema_cross, macd,
+rsi_dip_recovery, supertrend, donchian), mean hold 35 bars, each replayed
+bar by bar. `analysis/exitpol.py`. Stops fill at min(open, stop) per the
+repo convention; when a target and a stop both hit in one bar the stop is
+assumed first, since daily bars cannot resolve intraday order.
+
+| policy | mean % | tail kept | cut early | beats base |
+|---|---|---|---|---|
+| baseline | +3.385 | 100% | — | — |
+| fixed5 | +1.697 | 53.2% | 16.2% | 1/4 |
+| **trail5** | **+0.665** | **13.4%** | **31.6%** | 1/4 |
+| fixed20 | +2.942 | 92.1% | 2.3% | 0/4 |
+| trail20 | +2.329 | 73.0% | 5.4% | 1/4 |
+| **be30** | **+3.267** | **96.2%** | **0.4%** | 1/4 |
+| be10 | +2.614 | 76.5% | 4.8% | 1/4 |
+| trim30 | +2.784 | 80.2% | 5.2% | 1/4 |
+| **avgdn10** | **+4.249** | 103.2% | 0% | **4/4** |
+
+**TRAILING STOPS ARE WORSE THAN FIXED AT EVERY WIDTH**, which refutes the
+prior stated before the run. A 5% trail keeps 13.4% of the baseline's
+right tail and cuts a third of trades early. The mechanism: a trend's
+normal pullback IS a 5-10% retrace from the running high, so a trailing
+stop lives inside the noise, while a fixed stop sits below entry and never
+gets dragged up into it.
+
+**BREAKEVEN STOPS ARE THE ONE CHEAP POLICY.** be30 costs 0.12pp of mean
+and keeps 96.2% of the tail; be10 gives the table's largest median
+improvement (-1.151% to -0.450%). They are cheap precisely because they
+only arm AFTER the trade is already up.
+
+**NOTHING EXCEPT AVERAGING DOWN BEATS BASELINE IN MORE THAN 1 OF 4 ERAS**,
+and every single-era win lands in 2021-22 -- the one period where the
+baseline loses money. That is insurance, not edge, and it is the same
+shape as the fixed-stop result from the morning.
+
+### Averaging down: better mean, roughly double the tail
+
+Only 4/4 policy, and it survives the capital adjustment: +3.631% per unit
+of capital against baseline's +3.385%. Then the left tail:
+
+| | baseline | avgdn10, capital-weighted |
+|---|---|---|
+| worst trade | -98.4% | **-196.6%** |
+| p1 | -25.48% | **-43.12%** |
+| on the 10,525 it added to | mean -3.58% | **+3.00%** |
+| their p05 | -26.92% | **-46.15%** |
+| share still ending negative | — | **74.1%** |
+
+It converts a -3.58% average into +3.00% on the trades it touches, but
+**74% of those still lost** -- it is not rescuing most of them, the few it
+rescues outweigh in the mean. The 1-in-100 outcome goes -25% to -43%.
+Textbook martingale: better average, better win rate, roughly 2x tail.
+
+Doubly flattered: the trade-level replay cannot charge the capital tied up
+at portfolio level, and 2019-2026 contains only V-shaped recoveries. A
+prolonged or terminal decline is exactly what this sample lacks.
+
+## Fixed brackets on rsi2: a scale mismatch
+
+`analysis/bracket.py`, `analysis/bracket2.py`. +20%/-10% and +10%/-5%,
+both 2:1 so both need a **33.3% hit rate** to break even.
+
+| | WITHIN mean | hit rate of decided | PURE mean | edge over RANDOM entry |
+|---|---|---|---|---|
+| rsi2 20/10 | +0.763% | 6.6% | +3.532% | **+0.376pp** |
+| rsi2 10/5 | +0.483% | 14.3% | +1.210% | **+0.146pp** |
+| rsi2_ph 20/10 | +0.532% | 4.1% | +3.436% | +0.280pp |
+| rsi2_ph 10/5 | +0.337% | 10.5% | +1.152% | +0.088pp |
+
+*(baselines +0.983% / +0.759%)*
+
+**WITHIN mode fails at both widths and the asymmetry is structural.** RSI(2)
+buys INTO a decline, so the downside level is touched long before the
+upside one: at 10/5 the stop fires on 34.7% of trades and the target on
+5.8%. You pay for a stop and collect a target you never reach.
+
+**PURE mode is mostly beta.** Holding until a bracket resolves takes 58
+bars at 20/10 and 19 at 10/5. A RANDOM-ENTRY control in the same names
+over the same period returns +3.156% (20/10) and +1.064% (10/5), so the
+signal contributes +0.09 to +0.38pp and the rest is market plus a survivor
+universe. Tightening the bracket SHRINKS the edge over random.
+
+**A design flaw worth recording**, caught by noticing the trade counts were
+identical across widths: the bracket is a post-processing replay over a
+fixed trade list, so PURE mode counts overlapping positions a
+single-position-per-ticker engine could never hold. Only 41% (rsi2) and
+38% (rsi2_prior_high) of signals are actually takeable. De-overlapping
+barely moves the per-trade mean (+3.675% vs +3.532%), so the conclusion
+survives, but the trade COUNT was misleading.
+
+**The root problem is scale.** RSI(2)'s edge is +0.4% to +1.0% per trade
+over 4-8 bars. A 10% target is ten times that, a 20% target twenty-five
+times. The only way to reach it is to hold long past the point the signal
+means anything -- at which point you are holding the market, and the
+control proves it.
+
+## Options: plausible, unprovable, and IV is the whole game
+
+Measured from live chains 2026-10-09 (TradingView), applied to the real
+rsi2 trade distribution with Black-Scholes repricing at exit.
+
+| pricing | premium %spot | mean | median | win% | **ret/vol** | top-decile share |
+|---|---|---|---|---|---|---|
+| SPY IV 13.6% | 1.85% | +89.8% | +50.6% | 64.3% | **0.420** | 61.9% |
+| NVDA IV 31.1% | 3.97% | +18.6% | +12.7% | 58.3% | **0.191** | **116.8%** |
+| single IV 45% | 5.65% | +3.7% | +4.5% | 53.9% | **0.053** | 374.7% |
+| *the stock* | — | +0.98% | +1.86% | 69.1% | **0.132** | — |
+
+A 2:1 payoff IS mechanically reachable: an ATM call is ~28x notional
+leverage, so the median trade's +1.86% spot move becomes +12.7% on the
+option at realistic single-name IV. Risk-adjusted it beats the stock
+(0.191 vs 0.132) because convexity truncates the left tail -- max loss is
+the premium, against the stock's -10.8% p05.
+
+**But IV decides everything**: +89.8% at index vol, +18.6% at NVDA's 31%,
++3.7% at 45%, and above ~40% IV the option is WORSE risk-adjusted than the
+stock. And at realistic pricing the top decile contributes **116.8%** of
+total P&L, meaning the other 90% of trades collectively lose.
+
+**Two corrections to earlier claims in this session.** Option spreads were
+asserted at ~80bp per side and "4x the stock break-even". Measured: SPY
+15bp, NVDA 87bp -- wrong for the index, roughly right for a single name,
+and in neither case the binding constraint. Separately, a first pass used
+a delta+gamma Taylor expansion, which is only valid for small moves and
+overstated a 20% move's payoff by ~58%; it was replaced with proper
+Black-Scholes repricing.
+
+**Why this cannot be settled here.** No historical options data is
+available on these plans (Alpha Vantage HISTORICAL_OPTIONS is premium;
+Massive's price and quote endpoints are not entitled; TradingView serves
+current expirations only). Every figure above comes from ONE October 2026
+snapshot applied to seven years of trades, and 2022 single-name IV ran far
+above it. The model also holds IV constant entry to exit, while real IV
+falls when a stock rallies -- a bias that runs one way only, against long
+calls, on exactly the winning trades.
+
+The version of the idea that does not need the forecast is **defined
+risk**: a long option caps loss at the premium with no gap risk. That is
+the tail control this project keeps measuring as the thing that works, and
+it does not require IV to cooperate.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

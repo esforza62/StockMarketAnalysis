@@ -63,3 +63,18 @@ IC mechanically.
 `trendfeat.py` and `compvol.py` read `universe_1d.pkl` from the cache
 directory (see above); `incr.py` and part A of `compvol.py` read the
 committed grade history and need no cache.
+
+## Full-panel grade measurement
+
+`pscore_ic.py` runs the component IC, sub-period stability and incremental
+tests on `smc_regime.price_score`'s reconstruction -- 1,944 dates and
+767,147 rows rather than the grade history's 24 dates. It caches the
+reconstructed panel to `pscore_panel.pkl` in the cache directory, since
+rebuilding it takes ~3.5 minutes.
+
+This is the run that settled which of the 24-date findings were noise:
+RSI is not inverted (+0.004, not -0.066), MACD's apparent strength was
+sampling error, and trend_structure is the only component positive in all
+four sub-periods. It also found that more data did NOT buy significance --
+the largest overlap-adjusted t across 767k rows is +1.3. Full write-up in
+`docs/SETUP_QUALITY_NOTES.md`.

@@ -256,6 +256,103 @@ total by up to 0.2 points on 41% of rows. Harmless for the IC, but adjacent
 A-band scores differ by under 0.4 points, so that jitter does reorder names
 near the cuts — the same tight-bunching the `~A` tags exist for.
 
+## SETTLED: the full-panel measurement (2026-10-10)
+
+`smc_regime/price_score.py` reconstructs the six price-only components for
+every bar, so these run on **1,944 dates and 767,147 rows** instead of 24
+dates and 9,940. This is what the 14-date tables above could not do, and it
+contradicts most of them.
+
+### Per-component IC, full panel
+
+| component | 2w IC | 1m IC | hit | t_adj 2w | *(14-date claim)* |
+|---|---|---|---|---|---|
+| trend_structure | **+0.0140** | **+0.0149** | 54/57% | +1.0 | *+0.143* |
+| alignment | +0.0098 | +0.0127 | 54/57% | **+1.3** | *+0.052* |
+| rsi | +0.0038 | +0.0019 | 49/50% | +0.4 | *−0.066* |
+| streak | +0.0027 | +0.0011 | 53/51% | +0.5 | *+0.012* |
+| macd | −0.0040 | −0.0041 | 49/49% | −0.4 | *+0.113* |
+| volume | −0.0040 | −0.0056 | 48/49% | −0.6 | *+0.024* |
+| **price_score** (85 pts) | +0.0103 | +0.0087 | 55/54% | +1.1 | — |
+
+**RSI IS NOT INVERTED.** The −0.066 with a 29% hit rate was sampling error;
+on 1,933 dates it is +0.0038, indistinguishable from zero. The planned
+"is RSI backwards" investigation is closed, and the −0.38 correlation with
+trend_structure is not evidence of cancellation — it is two roughly
+uncorrelated-with-returns signals that happen to co-move.
+
+**MACD's apparent strength was also noise**: +0.113 on 14 dates, −0.0040 on
+1,933. So was trend_structure's +0.143; its real value is +0.0140, an
+order of magnitude smaller and close to the +0.0102 the independent
+price-only proxy measured earlier. That 14-fold disagreement is now
+resolved in favour of the large sample.
+
+### Sub-periods, 2w — the stability test
+
+| component | 2019-20 | 2021-22 | 2023-24 | 2025-26 | sign flips |
+|---|---|---|---|---|---|
+| **trend_structure** | +0.0189 | +0.0139 | +0.0065 | +0.0197 | **0** |
+| alignment | +0.0166 | +0.0156 | −0.0007 | +0.0087 | 2 |
+| rsi | +0.0224 | −0.0025 | −0.0065 | +0.0016 | 2 |
+| streak | +0.0050 | +0.0082 | −0.0082 | +0.0062 | 2 |
+| macd | −0.0180 | +0.0022 | +0.0015 | −0.0015 | 2 |
+| volume | +0.0013 | −0.0104 | +0.0006 | −0.0074 | 3 |
+| price_score | +0.0123 | +0.0184 | −0.0019 | +0.0127 | 2 |
+
+**trend_structure is the only component positive in all four eras.**
+Everything else changes sign at least twice. Four-for-four under a null of
+random signs is p=0.125, so this is a pattern rather than a proof, but it
+is the only consistency in the table and it agrees with trend_structure
+also being the largest IC and the most costly to remove.
+
+### Incremental, full panel — and it reverses the 14-date result
+
+| variant | pts | 2w IC | delta | 1m delta |
+|---|---|---|---|---|
+| price-only (all six) | 85 | +0.0103 | — | — |
+| drop trend_structure | 65 | +0.0031 | **−0.0072** | −0.0070 |
+| drop alignment | 75 | +0.0070 | **−0.0033** | −0.0041 |
+| drop rsi | 70 | +0.0074 | −0.0029 | −0.0027 |
+| drop streak | 75 | +0.0111 | +0.0009 | +0.0012 |
+| drop macd | 70 | +0.0128 | +0.0026 | +0.0040 |
+| drop volume | 70 | +0.0132 | +0.0029 | +0.0036 |
+
+On 14 dates EVERY removal improved the score and the table was
+uninterpretable. With 1,900 dates three removals clearly hurt and three
+mildly help, which is a real ranking rather than the variance artefact.
+Dropping trend_structure costs more than twice what any removal gains.
+
+Note the composite still ranks BELOW its best component (+0.0103 against
+trend_structure's +0.0140), now at full power. The earlier diagnosis holds:
+the components are near-independent (6.9 effective of 8), so the two with
+negative IC subtract rather than dilute. macd and volume are those two, and
+they are exactly the two whose removal helps.
+
+### The sobering part
+
+**More data did not produce significance.** With 767,147 rows the largest
+overlap-adjusted t is +1.3. The effects are real-looking but tiny: an IC of
+0.01 is economically trivial, and the honest reading is that the price-only
+grade ranks forward returns barely better than chance. The reconstruction
+succeeded as an instrument -- it settled which 14-date findings were noise,
+which was its purpose -- without turning up a signal worth acting on.
+
+Caveat carried from validation: `alignment` reconstructs at only 0.80
+correlation with the deployed component (it is a three-valued step
+function, so any regime disagreement swings it 5 points). Its numbers here
+describe the reconstruction. The other five correlate 1.00.
+
+### What this changes in the recommendations above
+
+- **Drop the "is RSI inverted" investigation.** Answered: no.
+- **The valuation cut still stands**, on the a priori argument and the
+  backfill neutralisation, neither of which this panel touches (valuation
+  is not price-only and cannot be reconstructed).
+- **Unsigning volume still stands** -- measured on its own well-powered
+  panel, and volume is one of the two negative-IC components here.
+- **Do not pursue component reweighting.** At IC 0.01 with t_adj ~1, there
+  is no weighting of these six that produces a useful score.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

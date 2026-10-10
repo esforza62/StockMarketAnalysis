@@ -78,3 +78,17 @@ sampling error, and trend_structure is the only component positive in all
 four sub-periods. It also found that more data did NOT buy significance --
 the largest overlap-adjusted t across 767k rows is +1.3. Full write-up in
 `docs/SETUP_QUALITY_NOTES.md`.
+
+## Regime persistence
+
+`persist.py` asks a different question from everything else here: not "does
+the grade rank returns" but "does the regime label survive". Reads the
+cached `pscore_panel.pkl`.
+
+The headline is about the market, not the grade: a confirmed (regime,
+direction) survives ten bars 49.3% of the time and twenty-one bars 37.2%.
+Parabolic survives 6.7%, so that label marks an ending rather than a state.
+The grade does not improve on the base rate (AUC 0.4903 pooled, below
+chance), and `streak` -- 10 points awarded for a long-held regime on the
+premise it is more settled -- scores below 0.5 in BOTH regimes, which
+falsifies the component's stated rationale on 750k bars.

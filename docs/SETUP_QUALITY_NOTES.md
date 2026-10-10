@@ -353,6 +353,100 @@ describe the reconstruction. The other five correlate 1.00.
 - **Do not pursue component reweighting.** At IC 0.01 with t_adj ~1, there
   is no weighting of these six that produces a useful score.
 
+## A DIFFERENT TARGET: does the grade predict that the regime CONTINUES?
+
+Everything above scores the grade against forward returns. A regime tool is
+arguably for a different question -- at bar t, is the confirmed (regime,
+direction) still the same N bars later? -- and the grade is built largely
+from persistence-flavoured inputs, so it deserved its own measurement
+rather than an inference from the return work. `analysis/persist.py`,
+763,027 observations.
+
+### There is no continuation probability to predict
+
+| horizon | same regime+direction | same direction only |
+|---|---|---|
+| 2 weeks | **49.3%** | 50.8% |
+| 1 month | **37.2%** | 38.1% |
+
+Direction alone survives two weeks 50.8% of the time. That is a coin flip,
+and it is the efficient-market answer rather than a defect in the
+classifier: "will this trend continue" has no edge in it at this horizon,
+for anyone, before any scoring is applied.
+
+### Two findings about the classifier, both usable
+
+| regime | persists 2w | n |
+|---|---|---|
+| choppy | 55.7% | 241,573 |
+| trending | 47.0% | 511,821 |
+| **parabolic** | **6.7%** | 9,633 |
+
+**Parabolic persists 6.7%.** By the time a move carries that label it is
+essentially over. The label should be read as "this is ENDING", never as
+"this is happening" -- close to the opposite of how a parabolic tag is
+normally used, and worth saying on the page.
+
+**Trending persists LESS than choppy**, 47.0% against 55.7%. The regime a
+reader would most want to extrapolate is the least stable one.
+
+### The grade adds nothing on top of that
+
+AUC, where 0.50 is no separation. Pooled is shown only to be dismissed:
+trending and choppy persist at different rates and the grade scores
+differently across them, so a pooled number can look predictive while
+merely re-reading the regime label the caller already has.
+
+| feature | pooled 2w | choppy | trending |
+|---|---|---|---|
+| price_score | 0.4903 | 0.4733 | 0.5070 |
+| rsi | 0.4123 | 0.5254 | 0.4242 |
+| macd | 0.5204 | 0.4675 | 0.5468 |
+| alignment | 0.5114 | 0.5000 | 0.5190 |
+| volume | 0.4961 | 0.4972 | 0.4950 |
+| streak | 0.4995 | 0.4877 | 0.4922 |
+
+`price_score` is 0.4903 pooled -- below chance. Three features (rsi, macd,
+price_score) flip sign between regimes in near-mirror image, which is the
+shape of noise rather than regime-conditional information.
+
+Persistence by score quartile, within regime, 2w:
+
+    choppy    base 55.7%   Q1 57.4  Q2 58.0  Q3 56.8  Q4 50.7   Q4-Q1 -6.6pp
+    trending  base 47.0%   Q1 49.5  Q2 44.3  Q3 42.6  Q4 51.8   Q4-Q1 +2.3pp
+
+Choppy is INVERTED -- the best-scored quartile persists 6.6pp less -- and
+trending is U-shaped. Neither is monotonic, which is what a real
+relationship would look like and what noise does not.
+
+### The cleanest falsification of the day: `streak`
+
+**`streak` scores AUC 0.4877 in choppy and 0.4922 in trending. Both below
+0.5.**
+
+The component awards 10 of the grade's 100 points for a long regime
+streak, on the stated premise that a regime which has held is more settled
+and therefore more likely to continue -- `regime_streak_bars`' own
+docstring says "a longer streak there means the regime has held (not just
+been confirmed once), a stronger signal". Measured across 750,000 bars,
+how long a regime has already run carries NO information about whether it
+survives the next ten bars, and leans very slightly the wrong way.
+
+Unlike the component findings from the 24-date history, this one is well
+powered. It is a documented rationale contradicted by data, and it is the
+most concrete thing on this page: 10 points are being awarded for a
+property that has been measured not to exist.
+
+### What this adds to the recommendations
+
+- **Do not build a "probability the trend continues" feature.** The
+  underlying quantity is 49-51%, before any model.
+- **Say what parabolic means on the page.** 6.7% persistence makes it an
+  exit signal, not a state.
+- **`streak` is now a third candidate for subtraction**, alongside
+  valuation and the volume signing -- and it is the best evidenced of the
+  three for the specific claim it makes.
+
 ## Guard rails for whoever does this
 
 **Twenty-four capture dates is not enough to fit weights to.** The

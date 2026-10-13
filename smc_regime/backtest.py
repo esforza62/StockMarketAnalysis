@@ -194,6 +194,8 @@ def run_backtest(
     max_hold_bars: int | None = None,
     size_series: pd.Series | None = None,
     slippage_pct: float = 0.0,
+    target_pct: float | None = None,
+    target_pct_series: pd.Series | None = None,
 ) -> list[Trade]:
     """Simulate a single-position long-only strategy from entry/exit signals.
 
@@ -227,6 +229,16 @@ def run_backtest(
     here rather than in a strategy -- a filter changes the sample and can
     flatter itself by dropping losers, whereas a weight cannot.
 
+    target_pct / target_pct_series, if set, is a fixed profit target: the
+    position closes the first bar whose High reaches
+    entry_price * (1 + target_pct/100), filling at max(that bar's Open, the
+    target) -- a bar that gaps above the target fills at the open, the
+    mirror of the gapped stop. Per-entry like the stop series (fixed at the
+    entry bar). Checked AFTER the stop on the same bar: daily bars do not
+    say which level traded first, so a bar touching both is counted as a
+    stop -- the pessimistic reading. Both default to None, so every existing
+    caller gets exactly the trades it got before (exit_reason "target").
+
     Neither a stop nor the time limit is ever checked on the entry bar
     itself: in_position only becomes True after that iteration's checks
     already ran, so nothing can close a position before it exists.
@@ -236,6 +248,7 @@ def run_backtest(
     entry_date = None
     entry_price = None
     stop_price = None
+    target_price = None
     bars_held = 0
     size = 1.0
 
@@ -279,6 +292,12 @@ def run_backtest(
                     ))
                     in_position = False
                     continue
+            if target_price is not None and df.loc[date, "High"] >= target_price:
+                bar_open = df.loc[date, "Open"]
+                trades.append(Trade(entry_date, date, entry_price, _slipped(max(bar_open, target_price), False, slippage_pct), size,
+                                    exit_reason="target"))
+                in_position = False
+                continue
             if max_hold_bars is not None and bars_held >= max_hold_bars:
                 trades.append(Trade(entry_date, date, entry_price, _slipped(close, False, slippage_pct), size,
                                     exit_reason="max_hold"))
@@ -300,6 +319,13 @@ def run_backtest(
                 stop_price = entry_price * (1 - stop_loss_pct / 100)
             else:
                 stop_price = None
+            if target_pct_series is not None:
+                tp = target_pct_series.get(date)
+                target_price = entry_price * (1 + tp / 100) if pd.notna(tp) and tp > 0 else None
+            elif target_pct is not None and target_pct > 0:
+                target_price = entry_price * (1 + target_pct / 100)
+            else:
+                target_price = None
         elif in_position and row["exit"]:
             trades.append(Trade(entry_date, date, entry_price, _slipped(close, False, slippage_pct), size,
                                 exit_reason="signal"))
@@ -346,6 +372,8 @@ def backtest_strategy(
     target_vol_pct: float | None = None,
     interval: str = "1d",
     slippage_pct: float = 0.0,
+    target_pct: float | None = None,
+    target_pct_series: pd.Series | None = None,
 ) -> list[Trade]:
     """target_vol_pct is the convenience form of size_series: it builds one
     from this ticker's own bars via vol_target_sizes(). Passing both is a
@@ -371,8 +399,12 @@ def backtest_strategy(
     ):
         stop_loss_pct_series = signals["stop_pct"]
 
+    # Same idea for a profit target: a strategy emitting `target_pct` gets it unless the caller passes one.
+    if "target_pct" in signals and target_pct is None and target_pct_series is None:
+        target_pct_series = signals["target_pct"]
+
     return run_backtest(
         df, signals,
         stop_loss_pct=stop_loss_pct, stop_loss_pct_series=stop_loss_pct_series, max_hold_bars=max_hold_bars,
-        size_series=size_series, slippage_pct=slippage_pct,
+        size_series=size_series, slippage_pct=slippage_pct, target_pct=target_pct, target_pct_series=target_pct_series,
     )

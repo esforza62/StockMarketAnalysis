@@ -53,8 +53,10 @@
 {"as_of": "2026-10-24", "ticker": "AMC", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "AMD", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-07", "ticker": "AMD", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "AMD", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "AMGN", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-08", "ticker": "AMGN", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "AMGN", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "AMP", "earnings_date": "2026-10-29", "is_estimate": false}
 {"as_of": "2026-10-31", "ticker": "AMP", "earnings_date": "2027-01-28", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "AMZN", "earnings_date": "2026-10-29", "is_estimate": true}
@@ -73,6 +75,7 @@
 {"as_of": "2026-09-12", "ticker": "APP", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "APTV", "earnings_date": "2026-10-29", "is_estimate": true}
 {"as_of": "2026-10-08", "ticker": "APTV", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "APTV", "earnings_date": "2027-02-01", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "ARES", "earnings_date": "2026-11-02", "is_estimate": true}
 {"as_of": "2026-10-01", "ticker": "ARES", "earnings_date": "2026-10-29", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "ARM", "earnings_date": "2026-11-04", "is_estimate": false}
@@ -166,6 +169,7 @@
 {"as_of": "2026-09-12", "ticker": "CRM", "earnings_date": "2026-12-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "CRWD", "earnings_date": "2026-12-01", "is_estimate": false}
 {"as_of": "2026-11-03", "ticker": "CRWD", "earnings_date": "2026-12-01", "is_estimate": true}
+{"as_of": "2026-11-05", "ticker": "CRWD", "earnings_date": "2026-12-01", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CRWV", "earnings_date": "2026-11-11", "is_estimate": false}
 {"as_of": "2026-10-28", "ticker": "CRWV", "earnings_date": "2026-11-10", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "CSCO", "earnings_date": "2026-11-12", "is_estimate": false}
@@ -347,6 +351,7 @@
 {"as_of": "2026-11-03", "ticker": "ISRG", "earnings_date": "2027-01-21", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "IT", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-21", "ticker": "IT", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "IT", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "IVZ", "earnings_date": "2026-10-27", "is_estimate": false}
 {"as_of": "2026-10-29", "ticker": "IVZ", "earnings_date": "2027-01-26", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "JBL", "earnings_date": "2026-09-30", "is_estimate": false}
@@ -356,8 +361,10 @@
 {"as_of": "2026-10-28", "ticker": "JBLU", "earnings_date": "2027-01-26", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "JD", "earnings_date": "2026-11-12", "is_estimate": false}
 {"as_of": "2026-11-03", "ticker": "JD", "earnings_date": "2026-11-12", "is_estimate": true}
+{"as_of": "2026-11-05", "ticker": "JD", "earnings_date": "2026-11-17", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "JKHY", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-22", "ticker": "JKHY", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "JKHY", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "JNJ", "earnings_date": "2026-10-13", "is_estimate": false}
 {"as_of": "2026-11-03", "ticker": "JNJ", "earnings_date": "2027-01-26", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "JPM", "earnings_date": "2026-10-13", "is_estimate": false}
@@ -535,6 +542,7 @@
 {"as_of": "2026-10-09", "ticker": "POOL", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PRU", "earnings_date": "2026-10-28", "is_estimate": false}
 {"as_of": "2026-10-07", "ticker": "PRU", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "PRU", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "PTC", "earnings_date": "2026-11-11", "is_estimate": false}
 {"as_of": "2026-10-20", "ticker": "PTC", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "PWR", "earnings_date": "2026-10-29", "is_estimate": false}
@@ -590,6 +598,7 @@
 {"as_of": "2026-09-12", "ticker": "SLDP", "earnings_date": "2026-11-03", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "SMCI", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-21", "ticker": "SMCI", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "SMCI", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SNAP", "earnings_date": "2026-11-04", "is_estimate": true}
 {"as_of": "2026-10-09", "ticker": "SNAP", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "SNDK", "earnings_date": "2026-11-06", "is_estimate": true}
@@ -617,6 +626,7 @@
 {"as_of": "2026-11-03", "ticker": "STZ", "earnings_date": "2027-01-07", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SWKS", "earnings_date": "2026-11-03", "is_estimate": true}
 {"as_of": "2026-10-21", "ticker": "SWKS", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "SWKS", "earnings_date": "2027-02-02", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "SYF", "earnings_date": "2026-10-14", "is_estimate": false}
 {"as_of": "2026-09-23", "ticker": "SYF", "earnings_date": "2026-10-20", "is_estimate": false}
 {"as_of": "2026-11-03", "ticker": "SYF", "earnings_date": "2027-01-26", "is_estimate": true}
@@ -644,6 +654,7 @@
 {"as_of": "2026-10-17", "ticker": "TNET", "earnings_date": "2026-10-29", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "TPR", "earnings_date": "2026-11-05", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "TRI", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "TRI", "earnings_date": "2027-02-04", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "TRMB", "earnings_date": "2026-11-04", "is_estimate": true}
 {"as_of": "2026-10-22", "ticker": "TRMB", "earnings_date": "2026-11-04", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "TROW", "earnings_date": "2026-10-30", "is_estimate": true}
@@ -699,6 +710,7 @@
 {"as_of": "2026-09-29", "ticker": "VFS", "earnings_date": "2026-10-19", "is_estimate": false}
 {"as_of": "2026-10-21", "ticker": "VFS", "earnings_date": "2026-11-19", "is_estimate": true}
 {"as_of": "2026-10-22", "ticker": "VFS", "earnings_date": "2026-11-24", "is_estimate": true}
+{"as_of": "2026-11-05", "ticker": "VFS", "earnings_date": "2026-12-02", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRSN", "earnings_date": "2026-10-22", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "VRT", "earnings_date": "2026-10-21", "is_estimate": true}
 {"as_of": "2026-10-17", "ticker": "VRT", "earnings_date": "2026-10-28", "is_estimate": false}
@@ -729,4 +741,5 @@
 {"as_of": "2026-09-12", "ticker": "XYZ", "earnings_date": "2026-11-09", "is_estimate": true}
 {"as_of": "2026-10-03", "ticker": "XYZ", "earnings_date": "2026-11-03", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "YUM", "earnings_date": "2026-11-03", "is_estimate": false}
+{"as_of": "2026-11-05", "ticker": "YUM", "earnings_date": "2027-02-03", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "ZBRA", "earnings_date": "2026-11-03", "is_estimate": false}

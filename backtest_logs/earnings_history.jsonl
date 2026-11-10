@@ -106,6 +106,7 @@
 {"as_of": "2026-09-12", "ticker": "BBY", "earnings_date": "2026-11-24", "is_estimate": true}
 {"as_of": "2026-10-06", "ticker": "BBY", "earnings_date": "2026-11-24", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "BEN", "earnings_date": "2026-11-06", "is_estimate": false}
+{"as_of": "2026-11-10", "ticker": "BEN", "earnings_date": "2027-01-29", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "BIDU", "earnings_date": "2026-11-18", "is_estimate": true}
 {"as_of": "2026-10-28", "ticker": "BIDU", "earnings_date": "2026-11-16", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "BKNG", "earnings_date": "2026-10-27", "is_estimate": false}
@@ -122,8 +123,10 @@
 {"as_of": "2026-10-17", "ticker": "BNY", "earnings_date": "2027-01-15", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "BRK-A", "earnings_date": "2026-11-07", "is_estimate": true}
 {"as_of": "2026-10-31", "ticker": "BRK-A", "earnings_date": "2026-11-07", "is_estimate": false}
+{"as_of": "2026-11-10", "ticker": "BRK-A", "earnings_date": "2026-11-09", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "BRK-B", "earnings_date": "2026-11-07", "is_estimate": true}
 {"as_of": "2026-10-31", "ticker": "BRK-B", "earnings_date": "2026-11-07", "is_estimate": false}
+{"as_of": "2026-11-10", "ticker": "BRK-B", "earnings_date": "2026-11-09", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "BRO", "earnings_date": "2026-10-26", "is_estimate": true}
 {"as_of": "2026-10-02", "ticker": "BRO", "earnings_date": "2026-10-26", "is_estimate": false}
 {"as_of": "2026-10-28", "ticker": "BRO", "earnings_date": "2027-01-25", "is_estimate": true}

@@ -96,6 +96,7 @@
 {"as_of": "2026-11-03", "ticker": "AXP", "earnings_date": "2027-01-29", "is_estimate": true}
 {"as_of": "2026-09-12", "ticker": "AZO", "earnings_date": "2026-09-22", "is_estimate": false}
 {"as_of": "2026-09-24", "ticker": "AZO", "earnings_date": "2026-12-08", "is_estimate": true}
+{"as_of": "2026-11-12", "ticker": "AZO", "earnings_date": "2026-11-21", "is_estimate": false}
 {"as_of": "2026-09-12", "ticker": "BA", "earnings_date": "2026-10-28", "is_estimate": false}
 {"as_of": "2026-10-01", "ticker": "BA", "earnings_date": "2026-10-27", "is_estimate": false}
 {"as_of": "2026-10-29", "ticker": "BA", "earnings_date": "2027-01-26", "is_estimate": true}
